@@ -7,9 +7,9 @@ import { serve, serveTLS } from "https://deno.land/std@0.78.0/http/server.ts";
 //@ts-ignore
 import { Context } from './context.ts';
 //@ts-ignore
-import { Handlers, Handler, MousseOptions, RequestMethod } from "./types.ts";
+import { Handlers, MousseOptions, RequestMethod } from "./types.ts";
 
-export class Mousse{
+export class Mouss{
   server: Server;
   router = new Router();
 
@@ -25,17 +25,15 @@ export class Mousse{
     }
   }
 
-  start = async () => {
-    console.log("starting");
+  start = async () : Promise<void> => {
     for await (const req of this.server) {
-      console.log("Req : ", req.method, " url ", req.url);
       let c = new Context(req);
       
       this.router.handle(c, () => {});
     }
   }
 
-  add(path: string, method: RequestMethod, ...handlers: Handlers): Mousse {
+  add(path: string, method: RequestMethod, ...handlers: Handlers): Mouss {
     this.router.add(path, method, ...handlers);
 
     return this;
@@ -43,33 +41,33 @@ export class Mousse{
 
   //TODO check async and promise ?
 
+  
 
-
-  delete(path: string, handlers : Handlers) : Mousse {
+  delete(path: string, handlers : Handlers) : Mouss {
     return this.add(path, "DELETE", ...handlers);
   }
-  get(path: string, handlers : Handlers) : Mousse {
+  get(path: string, handlers : Handlers) : Mouss {
     return this.add(path, "GET", ...handlers);
   }
-  head(path: string, handlers: Handlers) : Mousse {
+  head(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "HEAD", ...handlers);
   }
-  options(path: string, handlers: Handlers) : Mousse {
+  options(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "OPTIONS", ...handlers);
   }
-  patch(path: string, handlers: Handlers) : Mousse {
+  patch(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "PATCH", ...handlers);
   }
-  post(path: string, handlers: Handlers) : Mousse {
+  post(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "POST", ...handlers);
   }
-  put(path: string, handlers: Handlers) : Mousse {
+  put(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "PUT", ...handlers);
   }
-  trace(path: string, handlers: Handlers) : Mousse {
+  trace(path: string, handlers: Handlers) : Mouss {
     return this.add(path, "TRACE", ...handlers);
   }
-  any(path: string, handlers: Handlers) : Mousse {
+  any(path: string, handlers: Handlers) : Mouss {
     const methods : Array<RequestMethod> = [
       "DELETE",
       "GET",
@@ -85,7 +83,4 @@ export class Mousse{
     }
     return this;
   }
-  
-
-
 }

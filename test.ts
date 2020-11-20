@@ -1,5 +1,5 @@
 //@ts-ignore
-import { Mousse } from './index.ts';
+import { Mouss } from './mouss.ts';
 //@ts-ignore
 import { Context } from './context.ts';
 //class Route{};
@@ -100,7 +100,7 @@ let test3 : number[] = [1,2,3,4,1];
 console.log(test3.findIndex((value) => value == 4));*/
 
 
-let test = new Mousse({port : 8080});
+let test = new Mouss({port : 8080});
 
 test.add("/bonjour/:test", "GET",
     (context: Context) => {
