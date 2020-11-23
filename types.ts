@@ -1,13 +1,11 @@
 //@ts-ignore
 import { Context } from "./context.ts";
-//@ts-ignore
-import { WSContext } from './wscontext.ts';
 
 /**
  * Types for http server
  */
 
-export type RequestMethod = "CONNECT" | "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE";
+export type RequestMethod = "CONNECT" | "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" |"WS";
 
 export interface Handler{
     handle (context : Context, next? : () => void) : Promise<unknown> | unknown;
@@ -22,25 +20,6 @@ export interface HandlerFunction{
 }
 
 export type Handlers = Array<Handler | HandlerFunction>;
-
-
-/**
- * Types for Websocket server
- */
-
-export interface WSHandler{
-  handle(context: WSContext, next?: () => void): Promise<unknown> | unknown;
-}
-
-export interface WSHandlerFunction{
-  (context: WSContext, next?: (() => void)): void;
-}
-
-export type WSHandlers = Array<WSHandler | WSHandlerFunction>;
-
-export function isWSHandler(obj: any): obj is WSHandler {
-  return typeof obj.handle != 'undefined'; 
-}
 
 export interface MoussOptions{
   port: number,

@@ -2,6 +2,8 @@
 import { Mouss } from './mouss.ts';
 //@ts-ignore
 import { Context } from './context.ts';
+
+import { WebSocketMessage } from "https://deno.land/std@0.78.0/ws/mod.ts";
 //class Route{};
 /*
 interface HandlerFunction{
@@ -113,6 +115,23 @@ test.add("/bonjour/:test", "GET",
         });
     }
 );
+
+test.ws("/boom", async (c: Context) => {
+    if (c.websocket) {
+        for await (const ev of c.websocket) {
+            console.log(ev);
+            c.websocket.send(ev as WebSocketMessage);
+        }
+    }
+},
+async (c: Context) => {
+    if (c.websocket) {
+        for await (const ev of c.websocket) {
+            console.log(ev);
+            c.websocket.send("SECOND");
+        }
+    }
+});
 
 test.start();
 

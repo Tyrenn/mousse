@@ -1,11 +1,9 @@
 //@ts-ignore
-import { isHandler, Handler, RequestMethod } from "./types.ts"
+import { Handler, RequestMethod } from "./types.ts"
 //@ts-ignore
 import type { Context } from "./context.ts"
 //@ts-ignore
-import { match, Match, MatchFunction, MatchResult } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
-//@ts-ignore
-import { HandlerFunction } from './types.ts';
+import { match, Match, MatchFunction } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
 
 export class Route{
     path : string;
@@ -17,7 +15,7 @@ export class Route{
 
     constructor(path : string, method : RequestMethod, ...handlers : Array<Handler>){
         this.path = path;
-        console.log("IN CONSTRUCTOR", path);
+        //console.log("IN CONSTRUCTOR", path);
         this.pathregexp = match<Record<string, string>>(path, { decode: decodeURIComponent });
         this.pathnbslash = path.split("/").length - 1;
 
@@ -64,6 +62,8 @@ export class Route{
     addHandler(handler: Handler) {
         this.handlersStack.push(handler);
     }
+
+    //Route logic handle could go back in router ?
 
     handle(context : Context){
         /**

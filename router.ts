@@ -6,7 +6,7 @@ import { Context } from "./context.ts";
 import { Route } from "./route.ts"
 
 export class Router implements Handler{
-    routes : Record<"CONNECT" | "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE", Array<Route>> = {
+    routes : Record<RequestMethod, Array<Route>> = {
         CONNECT :   new Array<Route>(),
         DELETE :    new Array<Route>(),
         GET :       new Array<Route>(),
@@ -15,7 +15,8 @@ export class Router implements Handler{
         PATCH :     new Array<Route>(),
         POST :      new Array<Route>(),
         PUT :       new Array<Route>(),
-        TRACE :     new Array<Route>()
+		TRACE: 		new Array<Route>(),
+		WS:			new Array<Route>()
     }
 
     preHandlers: Array<Handler> = new Array<Handler>();
@@ -43,6 +44,7 @@ export class Router implements Handler{
     //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
     add(path : string, method : RequestMethod, ...handlers : Handlers) : Router {
         
+        //?Find the corresponding route
         let index : number = this.routes[method].findIndex(route => route.path === path);
         if (index < 0) {
             (this.routes[method]).push(new Route(path, method));
@@ -61,7 +63,53 @@ export class Router implements Handler{
         }
 
         return this;
-    }
+	}
+	
+	delete(path: string, handlers : Handlers) : Router {
+		return this.add(path, "DELETE", ...handlers);
+	}
+	get(path: string, handlers : Handlers) : Router {
+		return this.add(path, "GET", ...handlers);
+	}
+	head(path: string, handlers: Handlers) : Router {
+		return this.add(path, "HEAD", ...handlers);
+	}
+	options(path: string, handlers: Handlers) : Router {
+		return this.add(path, "OPTIONS", ...handlers);
+	}
+	patch(path: string, handlers: Handlers) : Router {
+		return this.add(path, "PATCH", ...handlers);
+	}
+	post(path: string, handlers: Handlers) : Router {
+		return this.add(path, "POST", ...handlers);
+	}
+	put(path: string, handlers: Handlers) : Router {
+		return this.add(path, "PUT", ...handlers);
+	}
+	trace(path: string, handlers: Handlers) : Router {
+		return this.add(path, "TRACE", ...handlers);
+	}
+
+	any(path: string, handlers: Handlers) : Router {
+		const methods : Array<RequestMethod> = [
+			"DELETE",
+			"GET",
+			"HEAD",
+			"OPTIONS",
+			"PATCH",
+			"POST",
+			"PUT",
+			"TRACE",
+		];
+		for (const method of methods) {
+			this.add(path, method, ...handlers);
+		}
+		return this;
+	}
+
+	ws(path: string, ...handlers: Handlers): Router{
+		return this.add(path, "WS", ...handlers);
+	}
 
     pre(...handlers: Handlers): Router{
         for(var handler of handlers){
@@ -91,11 +139,11 @@ export class Router implements Handler{
         }
 
         return this;
-    }
+	}
 
 
     //handle dispatches context to corresponding route
-    handle(context: Context, next: () => void) {
+    async handle(context: Context, next: () => void) {
         
         /* Execute Pre Handlers */
         let index : number = 0;
@@ -105,7 +153,6 @@ export class Router implements Handler{
             if(index < preHandlerStack.length)
                 preHandlerStack[index++].handle(context, nextPreHandler);
         };
-
 
 
         /* Classic Handling */
@@ -120,9 +167,19 @@ export class Router implements Handler{
         let remainingUrl : string = currentUrl.replace(context.processedUrl, "");
         console.log(remainingUrl);
 
-        for (var route of this.routes[<RequestMethod>context.req.method]) {
-            console.log(route);
-            console.log(route.match(remainingUrl));
+
+        //Should be compatible with all GET routes !
+        //using ws with specific types is like add but with specific switch, adding a handler before any !
+        //using ws
+        if (context.isAcceptable()) {
+            await context.wsUpgrade();
+
+            //Upraded but still distributed to every GET route...
+
+            //could be upgraded before entering router...
+        }
+		
+		for (var route of this.routes[<RequestMethod>context.req.method]) {
             if (route.match(remainingUrl)) {
                 route.handle(context);
             }
