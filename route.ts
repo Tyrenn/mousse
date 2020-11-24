@@ -1,48 +1,46 @@
 //@ts-ignore
-import { Handler, RequestMethod } from "./types.ts"
+import { Handler, RouteInstances } from "./types.ts"
 //@ts-ignore
 import type { Context } from "./context.ts"
 //@ts-ignore
 import { match, Match, MatchFunction } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
+//@ts-ignore
+import { isWebSocketCloseEvent, WebSocket, WebSocketEvent } from 'https://deno.land/std@0.78.0/ws/mod.ts';
+//@ts-ignore
+import { WebSocketPool } from "./websocket.ts";
 
 export class Route{
     path : string;
-    method : RequestMethod;
     handlersStack : Array<Handler> = new Array<Handler>();
     pathregexp : MatchFunction<Record<string,string>>;
-    pathnbslash : number;
-    params : Record<string, string>;
 
-    constructor(path : string, method : RequestMethod, ...handlers : Array<Handler>){
+    params: Record<string, string> = {};
+    instances: RouteInstances = {};
+
+    handle: ((c: Context) => void);
+
+    constructor(path : string, isWSRoute : boolean = false, ...handlers : Array<Handler>){
+        
+        //Removing last / if present
         this.path = path;
-        //console.log("IN CONSTRUCTOR", path);
+        if (this.path.length > 1)
+            this.path = this.path.replace(/\/$/, '');
+        
         this.pathregexp = match<Record<string, string>>(path, { decode: decodeURIComponent });
-        this.pathnbslash = path.split("/").length - 1;
-
-        this.method = method;
-
         this.handlersStack = handlers;
-        //this.addHandlers(...handlers);
 
-        this.params = {};
+        if (isWSRoute) {
+            this.handle = this.handleWS;
+        }
+        else {
+            this.handle = this.handleNoWS;
+        }
+        
     }
 
     match(path : string) : Boolean{
-        //Path is the complete request url
-        //Matching only on equally "/" numbered path portion
-        /*let splitpath = path.split("/");
-        console.log("SPLITPATH ", splitpath);
-        splitpath.splice(0,this.pathnbslash - 1);
-        console.log("SPLITPATH", splitpath);
-
-        path = splitpath.join("/");*/
-
-        console.log("path in match :", path);
-
         if (path != null) {
             let match: Match<Record<string,string>> = this.pathregexp(path);
-            
-            console.log(match);
 
             if (typeof match != "boolean") {
                 this.params = match.params;
@@ -63,29 +61,63 @@ export class Route{
         this.handlersStack.push(handler);
     }
 
-    //Route logic handle could go back in router ?
+    handleWS(context: Context) {
+        if (context.websocket) {
+            /*
+            if(this.wsRouteInstances.has(req.url)){
+                wsRouteInstance = this.wsRouteInstances.get(req.url);
+                wsRouteInstance.add(ws);
+            }
+            else{
+                wsRouteInstance = new WSRouteInstance(req.url);
+                wsRouteInstance.add(ws);
+                this.wsRouteInstances.set(req.url, wsRouteInstance);
+            }
+            ws.routeInstance = wsRouteInstance;*/
 
-    handle(context : Context){
+            let processedUrl : string = context.processedUrl + this.path;
+
+            
+            if (this.instances[processedUrl]) {
+                this.instances[processedUrl].add(context.websocket);
+            }
+            else {
+                this.instances[processedUrl] = new WebSocketPool(context.websocket);
+            }
+
+            if (context.wsevent && isWebSocketCloseEvent(context.wsevent)) {
+                this.instances[processedUrl].rm(context.websocket);
+            }
+            
+            /**
+             * Freeze context for same level handlers
+             */
+
+            let params : Record<string, string> = { ...context.params, ...this.params };
+            let idx : number = 0;
+            let handlersStack: Array<Handler> = this.handlersStack;
+            let websocketpool: WebSocketPool = this.instances[processedUrl];
+
+            let next = function (){
+                if(idx < handlersStack.length){
+                    context.processedUrl = processedUrl;
+                    context.params = params;
+                    context.broadcast = websocketpool;
+
+                    handlersStack[idx++].handle(context, next);
+                }
+            };
+            
+        }
+    }
+
+
+    handleNoWS(context : Context){
         /**
          * Check the pre-processed Url and save it to a fixed object sent to each child routes
         */
         let processedUrl : string = context.processedUrl + this.path;
-
-        /**
-        * Set context params
-        */
-        let params = this.params;
-
-        /**
-        * If true then no other route will process request.
-        */
-        //let isFinalRoute : Boolean = false;
-        //if(context.req.url.length == processedUrl.length)
-        //    isFinalRoute = true;
-
-        /**
-        * Freeze some context for next function aside processedUrl and Params
-        */
+        let params : Record<string, string> = { ...context.params, ...this.params };
         let idx : number = 0;
         let stack : Array<Handler> = this.handlersStack;
 
@@ -95,8 +127,6 @@ export class Route{
                 //Request infos are reset before every dispatching to same level middlewares
                 context.processedUrl = processedUrl;
                 context.params = params;
-                
-                console.log(idx);
 
                 stack[idx++].handle(context, next);
             }

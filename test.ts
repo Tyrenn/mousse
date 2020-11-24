@@ -1,9 +1,4 @@
-//@ts-ignore
-import { Mouss } from './mouss.ts';
-//@ts-ignore
-import { Context } from './context.ts';
 
-import { WebSocketMessage } from "https://deno.land/std@0.78.0/ws/mod.ts";
 //class Route{};
 /*
 interface HandlerFunction{
@@ -99,7 +94,7 @@ console.log(test2.handle.length);
 
 
 let test3 : number[] = [1,2,3,4,1];
-console.log(test3.findIndex((value) => value == 4));*/
+console.log(test3.findIndex((value) => value == 4));
 
 
 let test = new Mouss({port : 8080});
@@ -133,5 +128,19 @@ async (c: Context) => {
     }
 });
 
-test.start();
+test.start();*/
 
+export type Thing = { name: string };
+type Animal = { breed: string };
+const thing: Thing = {
+  name: "james"
+};
+const animal: Animal = {
+  breed: "cat"
+};
+const cat: Thing & Animal = {
+  ...thing,
+  ...animal
+};
+
+console.log(cat);

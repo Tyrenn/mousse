@@ -1,13 +1,12 @@
 //@ts-ignore
-import { Handler, HandlerFunction, Handlers, isHandler, RequestMethod } from "./types.ts";
+import { Handler, HandlerFunction, Handlers, isHandler, isWebSocketMethod, RequestMethod, WebSocketMethod } from "./types.ts";
 //@ts-ignore
 import { Context } from "./context.ts";
 //@ts-ignore
 import { Route } from "./route.ts"
 
 export class Router implements Handler{
-    routes : Record<RequestMethod, Array<Route>> = {
-        CONNECT :   new Array<Route>(),
+    routes : Record<RequestMethod | WebSocketMethod, Array<Route>> = {
         DELETE :    new Array<Route>(),
         GET :       new Array<Route>(),
         HEAD :      new Array<Route>(),
@@ -16,13 +15,16 @@ export class Router implements Handler{
         POST :      new Array<Route>(),
         PUT :       new Array<Route>(),
 		TRACE: 		new Array<Route>(),
-		WS:			new Array<Route>()
+        BINARY:     new Array<Route>(),
+        CLOSE:      new Array<Route>(),
+        PING:       new Array<Route>(),
+        TEXT:       new Array<Route>()
     }
 
-    preHandlers: Array<Handler> = new Array<Handler>();
+    preroute: Route = new Route("/");
 
-    lastHandlers: Array<Handler> = new Array<Handler>();
-
+    lastroute: Route = new Route("/");
+    
     constructor(){
 
     }
@@ -41,13 +43,25 @@ export class Router implements Handler{
         }
     }
 
+    use(path: string, ...handlers: Handlers): Router{
+        this.ws(path, ...handlers);
+        return this.any(path, ...handlers);
+    }
+
     //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-    add(path : string, method : RequestMethod, ...handlers : Handlers) : Router {
+    add(path : string, method : (RequestMethod | WebSocketMethod) | Array<RequestMethod | WebSocketMethod>, ...handlers : Handlers) : Router {
         
+        if (Array.isArray(method)) {
+            for (let m of method) {
+                this.add(path, m, ...handlers);
+            }
+            return this;
+        }
+
         //?Find the corresponding route
         let index : number = this.routes[method].findIndex(route => route.path === path);
         if (index < 0) {
-            (this.routes[method]).push(new Route(path, method));
+            (this.routes[method]).push(new Route(path, isWebSocketMethod(method)));
             index = (this.routes[method]).length - 1;
         }
 
@@ -63,66 +77,58 @@ export class Router implements Handler{
         }
 
         return this;
+    }
+    any(path: string, ...handlers: Handlers) : Router {
+        return this.add(path, ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], ...handlers);
 	}
-	
-	delete(path: string, handlers : Handlers) : Router {
+	delete(path: string, ...handlers : Handlers) : Router {
 		return this.add(path, "DELETE", ...handlers);
 	}
-	get(path: string, handlers : Handlers) : Router {
+	get(path: string, ...handlers : Handlers) : Router {
 		return this.add(path, "GET", ...handlers);
 	}
-	head(path: string, handlers: Handlers) : Router {
+	head(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "HEAD", ...handlers);
 	}
-	options(path: string, handlers: Handlers) : Router {
+	options(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "OPTIONS", ...handlers);
 	}
-	patch(path: string, handlers: Handlers) : Router {
+	patch(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "PATCH", ...handlers);
 	}
-	post(path: string, handlers: Handlers) : Router {
+	post(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "POST", ...handlers);
 	}
-	put(path: string, handlers: Handlers) : Router {
+	put(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "PUT", ...handlers);
 	}
-	trace(path: string, handlers: Handlers) : Router {
+	trace(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "TRACE", ...handlers);
 	}
-
-	any(path: string, handlers: Handlers) : Router {
-		const methods : Array<RequestMethod> = [
-			"DELETE",
-			"GET",
-			"HEAD",
-			"OPTIONS",
-			"PATCH",
-			"POST",
-			"PUT",
-			"TRACE",
-		];
-		for (const method of methods) {
-			this.add(path, method, ...handlers);
-		}
-		return this;
-	}
-
-	ws(path: string, ...handlers: Handlers): Router{
-		return this.add(path, "WS", ...handlers);
-	}
+	ws(path : string, ...handlers : Handlers) : Router{
+        return this.add(path, ["BINARY", "CLOSE", "PING", "TEXT"], ...handlers);
+    }
+    binary(path: string, ...handlers: Handlers) : Router{
+        return this.add(path, "BINARY", ...handlers);
+    }
+    close(path: string, ...handlers: Handlers): Router{
+        return this.add(path, "CLOSE", ...handlers);
+    }
+    ping(path: string, ...handlers: Handlers): Router{
+        return this.add(path, "PING", ...handlers);
+    }
 
     pre(...handlers: Handlers): Router{
         for(var handler of handlers){
             //Check if Handler or HandlerFunction
             if(isHandler(handler)){
-                this.preHandlers.push(handler);
+                this.preroute.addHandler(handler);
             }
             else {
-                //Need to transform it as handler
-                this.preHandlers.push(this.makeHandler(handler));
+                //If HandlerFunction need to transform it as handler
+                this.preroute.addHandler(this.makeHandler(handler));
             }
         }
-
         return this;
     }
 
@@ -130,11 +136,11 @@ export class Router implements Handler{
         for(var handler of handlers){
             //Check if Handler or HandlerFunction
             if(isHandler(handler)){
-                this.lastHandlers.push(handler);
+                this.lastroute.addHandler(handler);
             }
             else {
-                //Need to transform it as handler
-                this.lastHandlers.push(this.makeHandler(handler));
+                //If HandlerFunction need to transform it as handler
+                this.lastroute.addHandler(this.makeHandler(handler));
             }
         }
 
@@ -146,59 +152,24 @@ export class Router implements Handler{
     async handle(context: Context, next: () => void) {
         
         /* Execute Pre Handlers */
-        let index : number = 0;
-        let preHandlerStack: Array<Handler> = this.preHandlers;
-        
-        let nextPreHandler = function (){
-            if(index < preHandlerStack.length)
-                preHandlerStack[index++].handle(context, nextPreHandler);
-        };
-
+        this.preroute.handle(context);
 
         /* Classic Handling */
         //Finding a route that matches the request url
         let match: Boolean;
-        index = 0;
+        let index = 0;
         
-        console.log("In Router : ", " context req : ", context.req.method, " ", context.req.url);
-
-        let currentUrl: string = context.req.url.replace(/\/$/, '');
-        console.log(currentUrl);
-        let remainingUrl : string = currentUrl.replace(context.processedUrl, "");
+        let remainingUrl : string = context.request.url.replace(/\/$/, '').replace(context.processedUrl, "");
         console.log(remainingUrl);
 
-
-        //Should be compatible with all GET routes !
-        //using ws with specific types is like add but with specific switch, adding a handler before any !
-        //using ws
-        if (context.isAcceptable()) {
-            await context.wsUpgrade();
-
-            //Upraded but still distributed to every GET route...
-
-            //could be upgraded before entering router...
-        }
-		
-		for (var route of this.routes[<RequestMethod>context.req.method]) {
+		for (var route of this.routes[context.method]) {
             if (route.match(remainingUrl)) {
                 route.handle(context);
             }
         }
 
-        //? Why ?
-        //context.processedUrl = context.req.url;
-
-        
-
         /* Execute Last Handlers */
-        index = 0;
-        let lastHandlersStack: Array<Handler> = this.lastHandlers;
-        
-        let nextLastHandler = function (){
-            if(index < lastHandlersStack.length){
-                lastHandlersStack[index++].handle(context, nextLastHandler);
-            }
-        };
+        this.lastroute.handle(context);
 
         next();
     }
