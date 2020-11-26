@@ -1,12 +1,12 @@
 //@ts-ignore
-import { Handler, HandlerFunction, Handlers, isHandler, isWebSocketMethod, RequestMethod, WebSocketMethod } from "./types.ts";
+import { Handler, HandlerFunction, Handlers, isHandler, Method } from "./types.ts";
 //@ts-ignore
-import { Context } from "./context.ts";
+import { Context, HTTPContext, WSContext } from "./context.ts";
 //@ts-ignore
 import { Route } from "./route.ts"
 
 export class Router implements Handler{
-    routes : Record<RequestMethod | WebSocketMethod, Array<Route>> = {
+    routes : Record<Method, Array<Route>> = {
         DELETE :    new Array<Route>(),
         GET :       new Array<Route>(),
         HEAD :      new Array<Route>(),
@@ -14,30 +14,33 @@ export class Router implements Handler{
         PATCH :     new Array<Route>(),
         POST :      new Array<Route>(),
         PUT :       new Array<Route>(),
-		TRACE: 		new Array<Route>(),
-        BINARY:     new Array<Route>(),
-        CLOSE:      new Array<Route>(),
-        PING:       new Array<Route>(),
-        TEXT:       new Array<Route>()
+        TRACE:      new Array<Route>(),
+        WS :        new Array<Route>()
     }
 
     preroute: Route = new Route("/");
 
     lastroute: Route = new Route("/");
-    
-    constructor(){
 
-    }
+    #wsupgraded: boolean = false;
+
+    //handle: (context:  HTTPContext | WSContext, next?: () => void) => Promise<void>;
+	handle: HandlerFunction;
+	
+    constructor(){
+        this.handle = this.handleNoWS;
+	}
 
     private makeHandler(fn: HandlerFunction): Handler{
         if (fn.length < 2) {
-            return {handle(context : Context, next : () => void){
-                fn.apply(this, [context])
-                next();
+            return {handle(context : Context, next? : () => Promise<void> | void){
+				fn.apply(this, [context])
+				if (next)
+					next();
             }}
         }
         else {
-            return {handle(context: Context, next : () => void){
+            return {handle(context:  Context, next? : () => Promise<void> | void){
                 fn.apply(this, [context, next]);
             }}  
         }
@@ -49,7 +52,7 @@ export class Router implements Handler{
     }
 
     //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-    add(path : string, method : (RequestMethod | WebSocketMethod) | Array<RequestMethod | WebSocketMethod>, ...handlers : Handlers) : Router {
+    add(path : string, method : Method | Array<Method>, ...handlers : Handlers) : Router {
         
         if (Array.isArray(method)) {
             for (let m of method) {
@@ -61,7 +64,7 @@ export class Router implements Handler{
         //?Find the corresponding route
         let index : number = this.routes[method].findIndex(route => route.path === path);
         if (index < 0) {
-            (this.routes[method]).push(new Route(path, isWebSocketMethod(method)));
+            (this.routes[method]).push(new Route(path));
             index = (this.routes[method]).length - 1;
         }
 
@@ -77,7 +80,8 @@ export class Router implements Handler{
         }
 
         return this;
-    }
+	}
+	
     any(path: string, ...handlers: Handlers) : Router {
         return this.add(path, ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], ...handlers);
 	}
@@ -105,18 +109,11 @@ export class Router implements Handler{
 	trace(path: string, ...handlers: Handlers) : Router {
 		return this.add(path, "TRACE", ...handlers);
 	}
-	ws(path : string, ...handlers : Handlers) : Router{
-        return this.add(path, ["BINARY", "CLOSE", "PING", "TEXT"], ...handlers);
-    }
-    binary(path: string, ...handlers: Handlers) : Router{
-        return this.add(path, "BINARY", ...handlers);
-    }
-    close(path: string, ...handlers: Handlers): Router{
-        return this.add(path, "CLOSE", ...handlers);
-    }
-    ping(path: string, ...handlers: Handlers): Router{
-        return this.add(path, "PING", ...handlers);
-    }
+	ws(path: string, ...handlers: Handlers): Router{
+		if (!this.wsupgraded)
+			this.wsupgrade();
+		return this.add(path, "WS", ...handlers);
+	}
 
     pre(...handlers: Handlers): Router{
         for(var handler of handlers){
@@ -143,27 +140,66 @@ export class Router implements Handler{
                 this.lastroute.addHandler(this.makeHandler(handler));
             }
         }
-
         return this;
 	}
 
+    get wsupgraded(): boolean{
+        return this.#wsupgraded;
+    }
+
+    private wsupgrade() {
+        if (!this.#wsupgraded) {
+            this.#wsupgraded = true;
+            this.handle = this.handleWS;
+        }
+    }
+
+
+	private async handleWS(context: Context, next?: () => void) {
+		console.log("HANDLE WS", this);
+        /* Execute Pre Handlers */
+        this.preroute.handle(context);
+
+        /* WS handle */
+        let matched: boolean = false;
+
+        /* Classic Handling */
+        //Finding a route that matches the request url
+        let remainingUrl : string = context.request.url.replace(/\/$/, '').replace(context.processedUrl, "");
+        console.log(remainingUrl);
+
+        for (var route of this.routes[context.method]) {
+            if (route.match(remainingUrl)) {
+                matched = true;
+                route.handle(context);
+            }
+        }
+
+        if (context instanceof WSContext && !matched) {
+            context.close();
+        }
+
+        /* Execute Last Handlers */
+        this.lastroute.handle(context);
+
+        if(next)
+            next();
+    }
 
     //handle dispatches context to corresponding route
-    async handle(context: Context, next: () => void) {
-        
+	private async handleNoWS(context: Context, next?: () => void) {
+		console.log("HANDLE NO WS");
         /* Execute Pre Handlers */
         this.preroute.handle(context);
 
         /* Classic Handling */
         //Finding a route that matches the request url
-        let match: Boolean;
-        let index = 0;
-        
         let remainingUrl : string = context.request.url.replace(/\/$/, '').replace(context.processedUrl, "");
         console.log(remainingUrl);
 
 		for (var route of this.routes[context.method]) {
             if (route.match(remainingUrl)) {
+                
                 route.handle(context);
             }
         }
@@ -171,6 +207,7 @@ export class Router implements Handler{
         /* Execute Last Handlers */
         this.lastroute.handle(context);
 
-        next();
+        if(next)
+            next();
     }
 }

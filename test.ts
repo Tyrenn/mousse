@@ -1,5 +1,9 @@
 
 //class Route{};
+//@ts-ignore
+import { Mousse } from "./mousse.ts";
+//@ts-ignore
+import { Context, HTTPContext, WSContext } from "./context.ts";
 /*
 interface HandlerFunction{
     (req : string, res : string, next? : HandlerFunction) : void;
@@ -96,51 +100,27 @@ console.log(test2.handle.length);
 let test3 : number[] = [1,2,3,4,1];
 console.log(test3.findIndex((value) => value == 4));
 
+*/
+let test = new Mousse({port : 8080});
 
-let test = new Mouss({port : 8080});
-
-test.add("/bonjour/:test", "GET",
+test.get("/bonjour/:test",
     (context: Context) => {
         context.data = { ok: "First !!" };
     },
     function (context: Context) {
         let ok = context.data.ok;
-        context.respond({
-            status: 200, body: ok + "Bonjour" + context.params.test
-        });
+        if(context instanceof HTTPContext)
+          context.respond({
+              status: 200, body: ok + "Bonjour du 2 : " + context.params.test
+          });
     }
 );
 
-test.ws("/boom", async (c: Context) => {
-    if (c.websocket) {
-        for await (const ev of c.websocket) {
-            console.log(ev);
-            c.websocket.send(ev as WebSocketMessage);
-        }
-    }
+test.ws("/boom", async (c: WSContext) => {
+    console.log("First : ", c.event)
 },
-async (c: Context) => {
-    if (c.websocket) {
-        for await (const ev of c.websocket) {
-            console.log(ev);
-            c.websocket.send("SECOND");
-        }
-    }
+    async (c: WSContext) => {
+    console.log("Second : ", c.event)
 });
 
-test.start();*/
-
-export type Thing = { name: string };
-type Animal = { breed: string };
-const thing: Thing = {
-  name: "james"
-};
-const animal: Animal = {
-  breed: "cat"
-};
-const cat: Thing & Animal = {
-  ...thing,
-  ...animal
-};
-
-console.log(cat);
+test.start();

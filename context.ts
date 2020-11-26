@@ -1,107 +1,53 @@
 //@ts-ignore
-import type { Response, ServerRequest} from "https://deno.land/std@0.78.0/http/server.ts"
+import type { Response, Server, ServerRequest} from "https://deno.land/std@0.78.0/http/server.ts"
 //@ts-ignore
-import { acceptable, acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, WebSocket, WebSocketEvent } from "https://deno.land/std@0.78.0/ws/mod.ts";
-//@ts-ignore
-import { BufReader, BufWriter } from "https://deno.land/std@0.78.0/io/bufio.ts";
+import { acceptable, acceptWebSocket, isWebSocketCloseEvent, WebSocket, WebSocketEvent, WebSocketMessage } from "https://deno.land/std@0.78.0/ws/mod.ts";
 //@ts-ignore
 import { v4 } from "https://deno.land/std@0.78.0/uuid/mod.ts";
 //@ts-ignore
-import { Mouss } from './mouss.ts';
+import { Mousse } from './mousse.ts';
 //@ts-ignore
-import { WebSocketMethod, RequestMethod, Identifier } from './types.ts';
+import { Method, HandlerFunction } from './types.ts';
 //@ts-ignore
-import { WebSocketPool } from './websocket.ts';
+import { WebSocketPool, WebSocketIDed } from './websocket.ts';
 
-export class Context<T = any>{
+/*
+class Context<D = any>{
 
-    mouss: Mouss;
-    method : WebSocketMethod | RequestMethod;
+    mousse: Mousse;
+    id: string;
+
+    method : Method;
 
     request: ServerRequest;
     response?: Response;
 
-    #websocket?: WebSocket & Identifier;
+    #websocket?: WebSocketIDed;
     #wsevent?: WebSocketEvent;
-    #broadcast?: WebSocketPool;
 
     params : Record<string, string>;
     processedUrl: string;
-    data?: T;
+    data?: D;
 
-    constructor(mouss: Mouss, req: ServerRequest) {
-        this.mouss = mouss;
+    constructor(mousse: Mousse, req: ServerRequest) {
+        this.mousse = mousse;
         this.request = req;
-        this.method = <RequestMethod> req.method;
+        this.method = <Method> req.method;
         this.params = {};
         this.processedUrl = "";
+        this.id = v4.generate();
     }
 
-    get websocket(): (WebSocket & Identifier) | undefined{
-        if (this.isWSAccepted) {
-            return this.#websocket;
-        }
-        else {
-            return undefined;
-        }
+    get websocket(): WebSocket | undefined{
+        return this.#websocket?.websocket;
     }
 
     get wsevent(): WebSocketEvent | undefined{
-        if (this.isWSAccepted) {
-            return this.#wsevent;
-        }
-        else {
-            return undefined;
-        }
-    }
-
-    get broadcast(): WebSocketPool | undefined{
-        if (this.isWSAccepted) {
-            return this.#broadcast;
-        }
-        else {
-            return undefined;
-        }
-    }
-
-    set broadcast(websocketpool : WebSocketPool | undefined) {
-        if (this.isWSAccepted) {
-            this.#broadcast = websocketpool;
-        }
+        return this.#wsevent;
     }
     
     get isWSAccepted() {
-        return this.websocket && this.wsevent;
-        //return this.webSocketNotUndefined(this.#websocket) && this.wsEventNotUndefined(this.#wsevent);
-    }
-
-    isWSAcceptable() : boolean {
-        return !this.isWSAccepted && this.request.method == "GET" && acceptable(this.request);
-    }
-
-    async wsAccept() : Promise<void> {
-        const { conn, r: bufReader, w: bufWriter, headers } = this.request;
-        await acceptWebSocket({ conn, bufReader, bufWriter, headers }).then(
-            websocket => {
-                this.#websocket = {
-                    ...websocket,
-                    ...{ id: v4.generate() }
-                }
-            }
-        );
-    }
-
-    setEvent(event: WebSocketEvent) {
-        this.#wsevent = event;
-        if (typeof event === "string") {
-            this.method = "TEXT"
-        } else if (event instanceof Uint8Array) {
-            this.method = "BINARY";
-        } else if (isWebSocketPingEvent(event)) {
-            this.method = "PING";
-        } else if (isWebSocketCloseEvent(event)) {
-            this.method = "CLOSE";
-        }
+        return this.#websocket && this.#wsevent;
     }
 
     respond(res?: Response) {
@@ -118,5 +64,227 @@ export class Context<T = any>{
             this.request.respond({});
         }
     }
+
+    join(roomname: string): Context{
+        if (this.#websocket && this.mousse.websockets) {
+            let websocketpool = this.mousse.websockets.get(roomname);
+            if (websocketpool) {
+                websocketpool.add(this.#websocket); 
+            }
+            else {
+                this.mousse.websockets.set(roomname, new WebSocketPool(this.#websocket));
+            }
+        }
+        return this;
+    }
+
+    quit(roomname : string) : Context {
+        if (this.#websocket) {
+            let websocketpool = this.mousse.websockets.get(roomname);
+            if (websocketpool) {
+                websocketpool.rm(this.#websocket);
+                if (websocketpool.length < 1) {
+                    this.mousse.websockets.delete(roomname);
+                }
+            }
+        }
+        return this;
+    }
+
+    in(roomname: string): WebSocketPool{
+        let websocketpool = this.mousse.websockets.get(roomname);
+        if (websocketpool) {
+            return websocketpool;
+        }
+        else {
+            return new WebSocketPool();
+        }
+    }
+
+    get broadcast(): WebSocketPool{
+        let websocketpool = this.mousse.websockets.get("");
+        if (websocketpool) {
+            return websocketpool;
+        }
+        else {
+            return new WebSocketPool();
+        }
+    }
+
+    async send(data: WebSocketMessage) {
+        this.#websocket?.websocket.send(data);
+    }
+
+    async ping(data?: WebSocketMessage) {
+        this.#websocket?.websocket.ping(data);
+    }
+
+
+    async close() {
+        if (this.#websocket && !this.#websocket.websocket.isClosed) {
+            for (let websocketpool of this.mousse.websockets.values()) {
+                websocketpool.rm(this.#websocket);
+            }
+            await this.#websocket.websocket.close(1000).catch(console.error);
+            this.#websocket = undefined;
+        }
+    }
+
+    isWSAcceptable(): boolean {
+        return !this.isWSAccepted && this.request.method == "GET" && acceptable(this.request);
+    }
+
+    async wsAccept(fn?: HandlerFunction, next?: () => void): Promise<void> {
+		console.log("In context accept");
+        if (!this.isWSAccepted && this.request.method == "GET" && acceptable(this.request)) {
+            const { conn, r: bufReader, w: bufWriter, headers } = this.request;
+            
+            this.#websocket = new WebSocketIDed(await acceptWebSocket({ conn, bufReader, bufWriter, headers }), this.id);
+            this.join("");
+
+			if (fn) {
+				console.log("passé OOK ");
+                try {
+                    for await (const event of this.#websocket.websocket) {
+                        this.#wsevent = event;
+                        this.method = "WS";
+						
+                        await fn(this, next);
+
+                        if (isWebSocketCloseEvent(event)) {
+                            this.close();
+                        }
+                    }
+                }
+                catch (err) {
+                    console.error("Failed to receive frame:", err);
+                    this.close();
+                }
+            }
+        }
+    }
+
     //TODO : add helpers for response : cookies, contenttype, renderer ?
+}*/
+
+
+export class Context <D = any> {
+	mousse: Mousse;
+    id: string;
+	request: ServerRequest;
+	method: Method;
+	params : Record<string, string>;
+    processedUrl: string;
+	
+	data?: D;
+
+	constructor(mousse: Mousse, req: ServerRequest, method : Method) {
+        this.mousse = mousse;
+		this.request = req;
+		this.method = method;
+		this.params = {};
+        this.processedUrl = "";
+        this.id = v4.generate();
+    }
+}
+
+export class HTTPContext<D = any> extends Context<D>{
+
+	response: Response;
+
+	constructor(mousse: Mousse, req: ServerRequest) {
+		super(mousse, req, <Method> req.method);
+		this.response = {};
+	}
+
+	respond(res?: Response) {
+        if (res) {
+            this.request.respond(res);
+        }
+        else if(this.response) {
+            this.request.respond(this.response);
+        }
+        else {
+            this.request.respond({});
+        }
+    }
+}
+
+export class WSContext<D = any> extends Context<D>{
+
+    #websocket: WebSocketIDed;
+    event?: WebSocketEvent;
+
+	constructor(mousse: Mousse, req: ServerRequest, websocket : WebSocket) {
+		super(mousse, req, "WS");
+		this.#websocket = new WebSocketIDed(websocket, this.id);
+		this.join("");
+	}
+
+    get websocket(): WebSocket | undefined{
+        return this.#websocket?.websocket;
+    }
+
+	join(roomname: string): Context{
+        if (this.#websocket && this.mousse.websockets) {
+            let websocketpool = this.mousse.websockets.get(roomname);
+            if (websocketpool) {
+                websocketpool.add(this.#websocket); 
+            }
+            else {
+                this.mousse.websockets.set(roomname, new WebSocketPool(this.#websocket));
+            }
+        }
+        return this;
+    }
+
+    quit(roomname : string) : Context {
+        if (this.#websocket) {
+            let websocketpool = this.mousse.websockets.get(roomname);
+            if (websocketpool) {
+                websocketpool.rm(this.#websocket);
+                if (websocketpool.length < 1) {
+                    this.mousse.websockets.delete(roomname);
+                }
+            }
+        }
+        return this;
+    }
+
+    in(roomname: string): WebSocketPool{
+        let websocketpool = this.mousse.websockets.get(roomname);
+        if (websocketpool) {
+            return websocketpool;
+        }
+        else {
+            return new WebSocketPool();
+        }
+    }
+
+    get broadcast(): WebSocketPool{
+        let websocketpool = this.mousse.websockets.get("");
+        if (websocketpool) {
+            return websocketpool;
+        }
+        else {
+            return new WebSocketPool();
+        }
+    }
+
+    async send(data: WebSocketMessage) {
+        this.#websocket.websocket.send(data);
+    }
+
+    async ping(data?: WebSocketMessage) {
+        this.#websocket.websocket.ping(data);
+    }
+
+    async close() {
+        if (this.#websocket && !this.#websocket.websocket.isClosed) {
+            for (let websocketpool of this.mousse.websockets.values()) {
+                websocketpool.rm(this.#websocket);
+            }
+            await this.#websocket.websocket.close(1000).catch(console.error);
+        }
+    }
 }
