@@ -1,126 +1,128 @@
 
 //class Route{};
 //@ts-ignore
-import { Mousse } from "./mousse.ts";
+//import { Mousse } from "./mousse.ts";
 //@ts-ignore
-import { Context, HTTPContext, WSContext } from "./context.ts";
+//import { Context, WSContext } from "./context.ts";
+//@ts-ignore
+//import { Router } from "./router.ts";
+
 /*
-interface HandlerFunction{
-    (req : string, res : string, next? : HandlerFunction) : void;
-}
-
-class RouterProto{
-    wsRoutes: Route;
-    name: string;
-
-    constructor(n : string){
-        this.wsRoutes = new Route();
-        this.name = n;
-    }
-
-    handle(req : string, res : string, next? : HandlerFunction){
-        console.log("oook");
-    };
-
-    ws(handler : HandlerFunction) : RouterProto {
-        return this;
-    };
-
-
-}
-
-function create(n : string) : Router{
-    const instance = new RouterProto(n);
-    return Object.assign(() => instance.handle(), {
-    });
-}
-
-function Router(n : string) : HandlerFunction{
-    const proto = new RouterProto(n);
-    return Object.assign((req : string, res : string, next?: HandlerFunction) => proto.handle(req, res, next), {
-        //ws: (handler: HandlerFunction) => proto.ws(handler)
-    });
-}
-
-let test = Router("test");
-
-console.log(test);
-test("req", "res");
-
-console.log(typeof(test));
-
-let tey : HandlerFunction = (req : string, res : string, next?: HandlerFunction) => {};
-
-
-console.log(typeof(tey));
-
-
-interface Handler{
-    handle (req : string, res : string, next? : Handler) : Promise<unknown> | unknown;
-}
-
-class Router implements Handler{
-    routes : Record<"GET" | "POST" | "PUT" | "WS", Array<Handler>> = {
-        GET : new Array<Handler>(),
-        POST : new Array<Handler>(),
-        PUT : new Array<Handler>(),
-        WS : new Array<Handler>()
-    }
-
-    handle = (req : string, res : string, next? : Handler) => {
-        console.log("ok");
-    }
-}
-
-let test : Handler = new Router();
-
-let other : Handler = {
-    handle(req : string, res : string, next? : Handler){
-
-    }
-}
-
-console.log(test instanceof Router);
-console.log(other instanceof Router);
+let mousse = new Mousse({port : 8080});
 
 
 
-interface Handler{
-    handle(context : string, next? : Function) : void;
-}
+let kindRouter = new Router();
 
-
-let test : Handler = { handle(context: string, next : ()=> {}){ }};
-let test2 : Handler = { handle(context: string){ }};
-
-console.log(test.handle.length);
-console.log(test2.handle.length);
-
-
-let test3 : number[] = [1,2,3,4,1];
-console.log(test3.findIndex((value) => value == 4));
-
-*/
-let test = new Mousse({port : 8080});
-
-test.get("/bonjour/:test",
+kindRouter.get("/:kind",
     (context: Context) => {
-        context.data = { ok: "First !!" };
+        context.data = "What kind of Bubbles ?";
     },
     function (context: Context) {
-        let ok = context.data.ok;
-        if(context instanceof HTTPContext)
-          context.respond({
-              status: 200, body: ok + "Bonjour du 2 : " + context.params.test
-          });
+        context.respond({
+            status: 200, body: context.data + " Path says : " + context.params.kind
+        });
     }
 );
 
-test.ws("/boom", async (c: WSContext) => {
-    console.log("First : ", c.event)
-},
-    async (c: WSContext) => {
-    console.log("Second : ", c.event)
+kindRouter.get("/soap", (c) => {
+  console.log("Special type !")
+})
+
+mousse.any("/kind", kindRouter);
+
+// ANOTHER ROUTER
+
+let bubbleRouter = new Router();
+
+bubbleRouter.get("", (c) => {
+  c.respond({ status: 200, body: "I'm a Mousse bubble !" });
 });
 
-test.start();
+mousse.any("/bubble", bubbleRouter);
+
+// HANDLING WEBSOCKET
+
+mousse.ws("/popping",
+	async (c: WSContext<string>) => {
+		c.data = "BONJOUR";
+		c.to("").broadcast("POP");
+	},
+	async (c: Context<string>) => {
+		console.log(c.data);
+	}
+);
+
+mousse.start();*/
+
+//Mettre tout dans un objet socket dans le context
+//Mettre tout dans un objet response dans le context
+
+//in et to reste dans le context de base : communiquer avec des sockets depuis des routes http classiques
+
+/*
+class A{
+	test: string = "aaaa";
+	test2: string = "bbbb";
+	
+	ahaha() {
+		this.test2 = "dddd";
+	}
+}
+
+interface MinA{
+	test: string;
+	ahaha: () => void;
+}
+
+class B{
+  aobject: A = new A();
+  get getaobject(): MinA{
+    return this.aobject;
+  }
+}
+
+
+let test = new B();
+console.log(test);
+test.getaobject.test = "ccccc";
+console.log(test);
+test.getaobject.ahaha();
+console.log(test);
+*/
+
+
+
+
+
+export interface context1{
+  un: string;
+}
+
+interface context2{
+  deux: string;
+}
+
+type Type1 = ((context: context1) => void);
+
+type Type2 = ((context: context2) => void);
+
+
+type ArgumentTypes<F extends Function> = F extends (...args: infer A) => any ? A : never;
+
+function isContext1(obj: any): obj is context1{
+  return obj.un != undefined;
+}
+
+function isType1(obj: Type1 | Type2): obj is Type1{
+  //???
+  let test : ArgumentTypes<typeof obj>[0];
+  console.table(obj["arguments"]);
+  return false;
+}
+
+
+
+let test: Type1 = async function f(c: context1) { };
+isType1(test)
+//isTest(test);
