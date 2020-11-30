@@ -10,8 +10,6 @@ import { Context, ContextMethod, ContextHandlers } from './context.ts';
 import { WebSocketPool } from './websocket.ts';
 //@ts-ignore
 import { acceptWebSocket, acceptable, isWebSocketCloseEvent, WebSocket } from 'https://deno.land/std@0.78.0/ws/mod.ts';
-//@ts-ignore
-import { ServerRequest } from 'https://deno.land/std@0.78.0/http/server.ts';
 
 export interface MousseOptions{
 	port: number,
@@ -27,10 +25,10 @@ export class Mousse{
 
 	websockets: Map<string, WebSocketPool> = new Map<string, WebSocketPool>();
 
-	#wsupgraded: boolean = false;
+	//#wsupgraded: boolean = false;
 	started: boolean = false;
 
-	start: () => Promise<void>;
+	//start: () => Promise<void>;
 
 	constructor(opt: MousseOptions) {
 		this.opt = opt;
@@ -40,37 +38,16 @@ export class Mousse{
 		else {
 			this.server = serve(opt as HTTPOptions);
 		}
-		this.start = this.startNoWS;
+		//this.start = this.startNoWS;
 	}
-
+/*
 	private async startWS() {
 		if (!this.started) {
 			this.started = true;
 			for await (const req of this.server) {
 				let context = new Context(this, req);
 				if (context.wsUpgradable()) {
-					await context.wsupgrade();
-					await this.router.handle(context);
-					let websocket = context.websocket;
-					if (websocket) {
-						try {
-							for await (const event of websocket as WebSocket) {
-								//Reinit context values to 
-								context.urlpcd = "";
-								context.event = event;
-
-								this.router.handle(context);
-
-								if (websocket.isClosed || isWebSocketCloseEvent(event)) {
-									context.close();
-								}
-							}
-						}
-						catch (err) {
-							console.error("Failed to receive frame:", err);
-							context.close();
-						}
-					}
+					context.wsupgrade(this.handleWS);
 				}
 				else {
 					this.router.handle(new Context(this, req), () => { });
@@ -87,13 +64,23 @@ export class Mousse{
 			}
 		}
 	}
+  */
 
+  async start() {
+		if (!this.started) {
+			this.started = true;
+			for await (const req of this.server) {
+				this.router.handle(new Context(this, req));
+			}
+		}
+	}
+/*
 	private wsupgrade(): void {
 		if (!this.#wsupgraded) {
 			this.#wsupgraded = true;
 			this.start = this.startWS;	
 		}
-	}
+	}*/
 
 	use(path: string, ...handlers: ContextHandlers): this{
 		this.router.use(path, ...handlers);
@@ -144,8 +131,6 @@ export class Mousse{
 		return this;
 	}
 	ws(path : string, ...handlers : ContextHandlers) : this{
-		if (!this.#wsupgraded)
-			this.wsupgrade();
 		this.router.ws(path, ...handlers);
 		return this;
 	}

@@ -141,12 +141,16 @@ export class Router implements ContextHandler{
 		}
 	}
 
+	private handleWS = async (context: Context, next?: () => void) => {
+    
+    //Upgrade context if possible then handled as a "WS" typed context
+    if (context.wsUpgradable) {
+      context.wsupgrade(this.handleWS);
+      return;
+    }
 
-	private async handleWS(context: Context, next?: () => void) {
-		/* WS handle */
 		let matched: boolean = false;
 
-		/* Classic Handling */
 		//Finding a route that matches the request url
 		console.log("  ---- \n");
 		console.log("Req url : ", context.url);
@@ -180,7 +184,7 @@ export class Router implements ContextHandler{
 	}
 
 	//handle dispatches context to corresponding route
-	private async handleNoWS(context: Context, next?: () => void) {
+	private handleNoWS = async (context: Context, next?: () => void) => {
 		/* Classic Handling */
 		//Finding a route that matches the request url
 		let remainingUrl : string = context.url.replace(/\/$/, '').replace(context.urlpcd, "");

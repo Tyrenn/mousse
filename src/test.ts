@@ -1,13 +1,13 @@
+//@ts-ignore
+import { Mousse } from "./mousse.ts";
+//@ts-ignore
+import { Context, WSContext } from "./context.ts";
+//@ts-ignore
+import { Router } from "./router.ts";
+//@ts-ignore
+import { isWebSocketConnectEvent } from './websocket.ts';
 
-//class Route{};
-//@ts-ignore
-//import { Mousse } from "./mousse.ts";
-//@ts-ignore
-//import { Context, WSContext } from "./context.ts";
-//@ts-ignore
-//import { Router } from "./router.ts";
 
-/*
 let mousse = new Mousse({port : 8080});
 
 
@@ -44,23 +44,29 @@ mousse.any("/bubble", bubbleRouter);
 // HANDLING WEBSOCKET
 
 mousse.ws("/popping",
-	async (c: WSContext<string>) => {
-		c.data = "BONJOUR";
-		c.to("").broadcast("POP");
+  async (c: WSContext<string>) => {
+    if (c.event && isWebSocketConnectEvent(c.event)) {
+      c.data = "CONNECTION DE LA SOCKET";
+    }
+    else {
+      c.data = "MESSAGE DE LA SOCKET";
+    }
+		
+		c.in("").broadcast("POP");
 	},
 	async (c: Context<string>) => {
-		console.log(c.data);
+    c.send(c.data as string);
 	}
 );
 
-mousse.start();*/
+mousse.start();
 
 //Mettre tout dans un objet socket dans le context
 //Mettre tout dans un objet response dans le context
 
 //in et to reste dans le context de base : communiquer avec des sockets depuis des routes http classiques
 
-
+/*
 export class A implements MinA1, MinA2{
 	prop1: string = "aaaa";
 	prop2: string = "bbbb";
@@ -131,4 +137,4 @@ type fctx = (c: context) => void;
 
 function handle(f : fctx) {
   f(new context());
-}
+}*/
