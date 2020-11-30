@@ -1,19 +1,17 @@
 //@ts-ignore
-import { Handler } from "./types.ts"
-//@ts-ignore
-import type { Context } from "./context.ts"
+import type { Context, ContextHandler } from "./context.ts"
 //@ts-ignore
 import { match, Match, MatchFunction } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
 
 export class Route{
 	path: string;
 	slashes: number;
-	handlersStack : Array<Handler> = new Array<Handler>();
+	handlersStack : Array<ContextHandler> = new Array<ContextHandler>();
 	pathregexp : MatchFunction<Record<string,string>>;
 
 	params: Record<string, string> = {};
 
-	constructor(path : string, ...handlers : Array<Handler>){
+	constructor(path : string, ...handlers : Array<ContextHandler>){
 		this.path = path;
 		if (this.path.length > 1) {
 			//delete first slash
@@ -49,7 +47,7 @@ export class Route{
 		}
 	}
 
-	addHandler(handler: Handler) {
+	addHandler(handler: ContextHandler) {
 		this.handlersStack.push(handler);
 	}
 
@@ -60,7 +58,7 @@ export class Route{
 		let urlpcd : string = context.urlpcd + "/" + this.path;
 		let params : Record<string, string> = { ...context.params, ...this.params };
 		let idx : number = 0;
-		let stack : Array<Handler> = this.handlersStack;
+		let stack : Array<ContextHandler> = this.handlersStack;
 
 		console.log(stack);
 

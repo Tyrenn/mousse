@@ -60,24 +60,33 @@ mousse.start();*/
 
 //in et to reste dans le context de base : communiquer avec des sockets depuis des routes http classiques
 
-/*
-class A{
-	test: string = "aaaa";
-	test2: string = "bbbb";
+
+export class A implements MinA1, MinA2{
+	prop1: string = "aaaa";
+	prop2: string = "bbbb";
 	
 	ahaha() {
-		this.test2 = "dddd";
-	}
+		this.prop2 = "dddd";
+  }
+
+  changeprop2() : MinA1{
+    this.prop1 = "ehehehe";
+    return this;
+  }
 }
 
-interface MinA{
-	test: string;
-	ahaha: () => void;
+interface MinA1{
+	prop2: string;
+  ahaha: () => void;
+}
+
+interface MinA2{
+  changeprop2(): MinA1;
 }
 
 class B{
   aobject: A = new A();
-  get getaobject(): MinA{
+  get getaobject(): MinA2{
     return this.aobject;
   }
 }
@@ -85,44 +94,41 @@ class B{
 
 let test = new B();
 console.log(test);
-test.getaobject.test = "ccccc";
-console.log(test);
-test.getaobject.ahaha();
-console.log(test);
-*/
+let m2: MinA2 = test.getaobject;
+console.log(m2);
+m2.changeprop2();
+console.log(m2);
 
 
 
+interface context1{
+  ok1: string;
 
-
-export interface context1{
-  un: string;
+  change(): context2;
 }
 
 interface context2{
-  deux: string;
+  ok2: string;
 }
 
-type Type1 = ((context: context1) => void);
+class context implements context1, context2{
+  ok1: string;
+  ok2: string;
 
-type Type2 = ((context: context2) => void);
+  constructor() {
+    this.ok1 = "ok1";
+    this.ok2 = "ok2";
+  }
 
+  change(): this{
+    this.ok2 = "OK";
 
-type ArgumentTypes<F extends Function> = F extends (...args: infer A) => any ? A : never;
-
-function isContext1(obj: any): obj is context1{
-  return obj.un != undefined;
+    return this;
+  }
 }
 
-function isType1(obj: Type1 | Type2): obj is Type1{
-  //???
-  let test : ArgumentTypes<typeof obj>[0];
-  console.table(obj["arguments"]);
-  return false;
+type fctx = (c: context) => void;
+
+function handle(f : fctx) {
+  f(new context());
 }
-
-
-
-let test: Type1 = async function f(c: context1) { };
-isType1(test)
-//isTest(test);

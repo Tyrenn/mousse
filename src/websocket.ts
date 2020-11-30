@@ -1,10 +1,27 @@
 //@ts-ignore
-import { Identifier } from './types.ts';
-//@ts-ignore
-import { WebSocket, WebSocketMessage } from 'https://deno.land/std@0.78.0/ws/mod.ts';
+import { WebSocket, WebSocketCloseEvent, WebSocketMessage, WebSocketPingEvent, WebSocketPongEvent } from 'https://deno.land/std@0.78.0/ws/mod.ts';
 //@ts-ignore
 import { v4 } from 'https://deno.land/std@0.78.0/uuid/mod.ts';
+//@ts-ignore
+import { hasOwnProperty } from "https://deno.land/std@0.78.0/_util/has_own_property.ts";
 
+export type Identifier = { id: string }
+
+export interface WebSocketConnectEvent {
+	id: string;
+}
+
+export function isWebSocketConnectEvent(obj: WebSocketEvent): obj is WebSocketConnectEvent {
+	return hasOwnProperty(obj, "id");
+}
+
+export type WebSocketEvent =
+	|	string
+	|	Uint8Array
+	|	WebSocketCloseEvent 
+	|	WebSocketPingEvent
+	|	WebSocketPongEvent	
+	|	WebSocketConnectEvent
 
 export class WebSocketIDed implements Identifier{
 	websocket: WebSocket;
