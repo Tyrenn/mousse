@@ -8,8 +8,10 @@ import { v4 } from "https://deno.land/std@0.78.0/uuid/mod.ts";
 import { Mousse } from './mousse.ts';
 //@ts-ignore
 import { WebSocketPool, WebSocketIDed, WebSocketEvent } from './websocket.ts';
+//@ts-ignore
+import { ServerSentEvent } from './serversentevent.ts';
 
-export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS";
+export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS" | "SSE";
 
 export interface ContextHandler{
 	handle: ContextHandlerFunction;
@@ -23,6 +25,8 @@ export function isHandler(obj: any): obj is ContextHandler {
 
 export type ContextHandlers = Array<ContextHandler | ContextHandlerFunction>;
 
+const sseencoder = new TextEncoder();
+
 export interface SSEContext<D = any>{
   mousse: Mousse;
   id: string;
@@ -34,7 +38,8 @@ export interface SSEContext<D = any>{
   data?: D;
 
   in: (roomname: string) => WebSocketPool;
-  end: () => Promise<void>;
+  onclose: () => void;
+  close: () => Promise<void>;
 }
 
 export interface WSContext<D = any>{
@@ -50,8 +55,8 @@ export interface WSContext<D = any>{
 	websocket?: WebSocket;
 	event?: WebSocketEvent;
 	
-	wsUpgradable : boolean;
-	wsupgrade: (handler?: ContextHandlerFunction) => Promise<WSContext>;
+	upgradable : boolean;
+	upgrade: (handler?: ContextHandlerFunction) => Promise<WSContext>;
 	
 	join : (roomname : string) => this;
 	quit : (roomname : string) => this;
@@ -73,14 +78,14 @@ export interface HTTPContext<D = any>{
 	
 	response?: Response;
 	
-	wsUpgradable : boolean;
-	wsupgrade: (handler? : ContextHandlerFunction) => Promise<WSContext>;
+	upgradable : boolean;
+	upgrade: (handler? : ContextHandlerFunction) => Promise<WSContext>;
 	
 	respond: (res?: Response) => Promise<void>;
 	in : (roomname : string) => WebSocketPool;
 }
 
-export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
+export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContext<D> {
 	mousse!: Mousse;
 	id: string;
 	request: ServerRequest;
@@ -93,18 +98,26 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
 	//HTTP Type Parameters
 	response?: Response;
 
+  //SSE Type Parameters
+  #eventtarget?: EventTarget;
+  
+  #issse : boolean = false;
+
 	//WS Type Parameters
 	#websocket?: WebSocketIDed;
-		event?: WebSocketEvent;
+  #iswebsocket: boolean = false;
+  event?: WebSocketEvent;
+
+  //SSE & WS Type Parameters
+  #prev = Promise.resolve();
+  #ready : Promise<void> | true = true;
+  
 
 	constructor(mousse: Mousse, req: ServerRequest) {
 		this.mousse = mousse;
 		this.request = req;
 		this.url = req.url;
 		if (this.url.length > 1) {
-			//delete first slash
-			this.url = this.url.replace(/^\//, '');
-			//delete last slash
 			this.url = this.url.replace(/\/$/, '');
 		}
 		this.method = req.method as ContextMethod;
@@ -122,10 +135,18 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
 		else {
 				return new WebSocketPool();
 		}
-	}
+  }
+
+  get upgradable() : boolean{
+		return (!this.#websocket && acceptable(this.request));
+  }
 
 	//HTTP Type Methods
-	async respond(res?: Response) {
+  async respond(res?: Response) {
+    if (this.#iswebsocket || this.#issse) {
+      console.error("Can't respond, context is pending");
+      return
+    }
 		if (res) {
 			await this.request.respond(res);
 		}
@@ -136,14 +157,74 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
 			await this.request.respond({});
 		}
 	}
+  
+  async send(data: string | Uint8Array | ServerSentEvent) {
+    if (this.#iswebsocket) {
+      this.#prev = this.#websocketsend((data instanceof ServerSentEvent) ? data.data : data, this.#prev);
+    }
+    if (this.#issse) {
+      this.#prev = this.#ssesend((data instanceof ServerSentEvent) ? data.toString() : data, this.#prev);
+    }
+  }
+  
+  //SSE Methods
+  async keepalive(): Promise<SSEContext>{
+    this.#ready = this.#ssesetup();
+    return this;
+  }
+
+  #ssesetup = async (): Promise<void> => {
+      let headers = 'HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\nContent-Type: text/event-stream\r\n\r\n';
+      try {
+        await this.request.w.write(sseencoder.encode(headers));
+        await this.request.w.flush();
+        console.log("KEPTPALIVE");
+        this.#eventtarget = new EventTarget();
+        this.#eventtarget.addEventListener("close", this.onclose);
+        this.method = "SSE";
+        this.#issse = true;
+        this.#prev = Promise.resolve();
+      } catch (err) {
+        console.error("failed to accept setup sse :", err);
+        this.close();
+      }
+  }
+
+  #ssesend = async (data: string | Uint8Array, prev: Promise<void>) => {
+    if (!this.#issse) {
+      console.error("Context is not SSE");
+      return;
+    }
+    if (this.#ready !== true) {
+      await this.#ready;
+      this.#ready = true;
+    }
+    try {
+      await prev;
+      const payload = typeof data === "string" ? sseencoder.encode(data) : data;
+      await this.request.w.write(payload);
+      await this.request.w.flush();
+    } catch (err) {
+      console.error("Failed to send data :", err);
+      this.close();
+    }
+  };
 	
-	get wsUpgradable() : boolean{
-		return (this.method == "GET" && !this.#websocket && acceptable(this.request));
-	}
-	
+  on(type: string, listener: EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) {
+  
+  }
+
 	//WS Type Methods
-	async wsupgrade(handler? : ContextHandlerFunction) : Promise<WSContext>{
-		if (this.wsUpgradable) {
+	async upgrade(handler? : ContextHandlerFunction) : Promise<WSContext>{
+    this.#ready = this.#wssetup(handler);
+    return this;
+  }
+  
+  #wssetup = async (handler?: ContextHandlerFunction): Promise<void> => {
+    if (!this.#iswebsocket && this.upgradable) {
+      if (!this.#issse) {
+        await this.close();
+      }
 			const { conn, r: bufReader, w: bufWriter, headers } = this.request;
 			let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err) => { throw(`failed to accept websocket: ${err}`);});
       if(websocket){
@@ -151,6 +232,8 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
         this.#websocket = new WebSocketIDed(websocket, this.id);
         this.join("");
         this.event = { id: this.id };
+        this.#iswebsocket = true;
+        this.#prev = Promise.resolve();
         if (handler) {
           handler(this);
           try {
@@ -172,17 +255,23 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
           }
         }
 			}
-		}
+    }
+    else {
+      console.error("Context is not acceptable");
+    }
+  } 
 
-		return this;
-	}
-
-	get websocket(): WebSocket | undefined{
-		return this.#websocket?.websocket;
+  get websocket(): WebSocket | undefined{
+    if (this.#iswebsocket) {
+      return this.#websocket?.websocket;
+    }
+    else {
+      return undefined;
+    }
 	}
 
 	join(roomname: string): this{
-		if (this.#websocket && this.mousse.websockets) {
+		if (this.#iswebsocket && this.#websocket && this.mousse.websockets) {
 			if (this.mousse.websockets.get(roomname)) {
 				this.mousse.websockets.get(roomname)?.add(this.#websocket);
 				console.log(this.mousse.websockets);
@@ -195,7 +284,7 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
 	}
 
 	quit(roomname : string) : this {
-		if (this.#websocket) {
+		if (this.#iswebsocket && this.#websocket) {
 			let websocketpool = this.mousse.websockets.get(roomname);
 			if (websocketpool) {
 				websocketpool.rm(this.#websocket);
@@ -206,24 +295,45 @@ export class Context <D = any> implements WSContext< D >, HTTPContext< D > {
 		}
 		return this;
 	}
+  
+  #websocketsend = async (data: string | Uint8Array, prev: Promise<void>) => {
+    if (!this.#iswebsocket) {
+      return;
+    }
+    if (this.#ready !== true) {
+      await this.#ready;
+      this.#ready = true;
+    }
+    try {
+      await prev;
+      await this.#websocket?.websocket.send(data);
+    } catch (err) {
+      console.error("Failed to send data :", err);
+      this.close();
+    }
+  }
 
-  async send(data: WebSocketMessage) {
-    //console.log("IN SEND  : ", data);
-    //console.log("IN SEND  : ",this.#websocket )
-		await this.#websocket?.websocket.send(data);
+  async ping(data?: WebSocketMessage) {
+    if(this.#iswebsocket)
+		  await this.#websocket?.websocket.ping(data);
 	}
 
-	async ping(data?: WebSocketMessage) {
-		await this.#websocket?.websocket.ping(data);
+  close = async () => {
+    if (this.#iswebsocket && this.#websocket) {
+      for (let websocketpool of this.mousse.websockets.values()) {
+        websocketpool.rm(this.#websocket);
+      }
+      if(!this.#websocket.websocket.isClosed)
+        await this.#websocket.websocket.close(1000).catch(console.error);
+      this.#iswebsocket = false;
+      this.#websocket = undefined;
+    }
+    if (this.#issse) {
+      if (this.#ready !== true) {
+        await this.#ready;
+      }
+      await this.#prev;
+      this.#eventtarget?.dispatchEvent(new Event("close", {cancelable : false}));
+    }
 	}
-
-	async close() {
-		console.trace("IN CLOSING");
-			if (this.#websocket && !this.#websocket.websocket.isClosed) {
-				for (let websocketpool of this.mousse.websockets.values()) {
-					websocketpool.rm(this.#websocket);
-				}
-				await this.#websocket.websocket.close(1000).catch(console.error);
-			}
-		}
 }

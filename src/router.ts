@@ -15,7 +15,8 @@ export class Router implements ContextHandler{
 		POST :      new Array<Route>(),
 		PUT :       new Array<Route>(),
 		TRACE:      new Array<Route>(),
-		WS:	        new Array<Route>()
+    WS:         new Array<Route>(),
+    SSE:        new Array<Route>()
 	}
 
   #middlewares: Array<Route> = new Array<Route>();
@@ -144,20 +145,16 @@ export class Router implements ContextHandler{
 	private handleWS = async (context: Context, next?: () => void) => {
     
     //Upgrade context if possible then handled as a "WS" typed context
-    if (context.wsUpgradable) {
-      context.wsupgrade(this.handleWS);
+    if (context.upgradable) {
+      context.upgrade(this.handleWS);
       return;
     }
 
+    console.log("URLPCD : ", context.urlpcd);
+
 		let matched: boolean = false;
-
 		//Finding a route that matches the request url
-		console.log("  ---- \n");
-		console.log("Req url : ", context.url);
-		console.log("Context ProcessedUrl :", context.urlpcd);
-
 		let remainingUrl : string = context.url.replace(context.urlpcd, "");
-		console.log("Remaining : ", remainingUrl);
 
 		for (let route of this.#routes[context.method]) {
 			if (route.match(remainingUrl)) {
@@ -172,12 +169,11 @@ export class Router implements ContextHandler{
         route.handle(context);
       }
     }
-		console.log(context.method, context.urlpcd, context.url);
-		console.log("matched :",  matched);
+		//console.log("matched :",  matched);
 
 		if(context.event && isWebSocketConnectEvent(context.event) && !matched) {
 			context.close();
-		}
+    }
 
 		if(next)
 			next();
@@ -185,9 +181,11 @@ export class Router implements ContextHandler{
 
 	//handle dispatches context to corresponding route
 	private handleNoWS = async (context: Context, next?: () => void) => {
-		/* Classic Handling */
+    console.log("URLPCD : ", context.urlpcd);
+  
+    /* Classic Handling */
 		//Finding a route that matches the request url
-		let remainingUrl : string = context.url.replace(/\/$/, '').replace(context.urlpcd, "");
+		let remainingUrl : string = context.url.replace(context.urlpcd, "");
 
 		for (var route of this.#routes[context.method]) {
 			if (route.match(remainingUrl)) {

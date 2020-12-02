@@ -69,8 +69,11 @@ export class Mousse{
   async start() {
 		if (!this.started) {
 			this.started = true;
-			for await (const req of this.server) {
-				this.router.handle(new Context(this, req));
+      for await (const req of this.server) {
+        console.log("\n\n-----\n");
+        let c = new Context(this, req)
+        console.log(c.method, c.url);
+				this.router.handle(c);
 			}
 		}
 	}

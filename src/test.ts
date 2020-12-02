@@ -10,19 +10,26 @@ import { isWebSocketConnectEvent } from './websocket.ts';
 
 let mousse = new Mousse({port : 8080});
 
+let testEvent = new EventTarget();
+testEvent.addEventListener("hello", () => {
+  console.log("OUI JE CAPTE N'IMPORTE QUEL EVENT BONJOUR");
+})
 
 
 let kindRouter = new Router();
 
 kindRouter.get("/:kind",
-    (context: Context) => {
-        context.data = "What kind of Bubbles ?";
-    },
+  (context: Context) => {
+      context.keepalive();
+      context.send(`data: ${new Date()}\n\n`);
+      const interval = setInterval(() => { context.send(`data: ${new Date()}\n\n`) }, 1000);
+        //context.data = "What kind of Bubbles ?";
+    }/*,
     function (context: Context) {
         context.respond({
             status: 200, body: context.data + " Path says : " + context.params.kind
         });
-    }
+    }*/
 );
 
 kindRouter.get("/soap", (c) => {
