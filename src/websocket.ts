@@ -1,5 +1,5 @@
 //@ts-ignore
-import { WebSocket, WebSocketCloseEvent, WebSocketMessage, WebSocketPingEvent, WebSocketPongEvent } from 'https://deno.land/std@0.78.0/ws/mod.ts';
+import { isWebSocketCloseEvent, WebSocket, WebSocketMessage } from 'https://deno.land/std@0.78.0/ws/mod.ts';
 //@ts-ignore
 import { v4 } from 'https://deno.land/std@0.78.0/uuid/mod.ts';
 //@ts-ignore
@@ -7,14 +7,7 @@ import { hasOwnProperty } from "https://deno.land/std@0.78.0/_util/has_own_prope
 
 export type Identifier = { id: string }
 
-export interface WebSocketConnectEvent {
-	id: string;
-}
-
-export function isWebSocketConnectEvent(obj: WebSocketEvent): obj is WebSocketConnectEvent {
-	return hasOwnProperty(obj, "id");
-}
-
+/*
 export type WebSocketEvent =
 	|	string
 	|	Uint8Array
@@ -22,6 +15,70 @@ export type WebSocketEvent =
 	|	WebSocketPingEvent
 	|	WebSocketPongEvent	
 	|	WebSocketConnectEvent
+*/
+
+export type WebSocketEvent = Event | WebSocketTextEvent | WebSocketBinaryEvent | WebSocketCloseEvent | WebSocketPingEvent | WebSocketPongEvent;
+
+export type WebSocketEventListener = WebSocketBinaryEventListener | WebSocketTextEventListener;
+
+export interface WebSocketBinaryEventListener {
+  (event: WebSocketBinaryEvent): void | Promise<void>;
+}
+
+export interface WebSocketTextEventListener{
+  (event: WebSocketTextEvent): void | Promise<void>;
+}
+
+export interface WebSocketTextEventListener{
+  (event: WebSocketTextEvent): void | Promise<void>;
+}
+
+export class WebSocketTextEvent extends Event{
+  readonly data: string;
+
+  constructor(data: string, eventInit? : EventInit) {
+    super("text", eventInit);
+    this.data = data;
+  }
+}
+
+export class WebSocketBinaryEvent extends Event{
+  readonly data : Uint8Array;
+
+  constructor(data: Uint8Array, eventInit? : EventInit) {
+    super("binary", eventInit);
+    this.data = data;
+  }
+}
+
+export class WebSocketCloseEvent extends Event{
+  readonly code: number;
+  readonly reason?: string;
+
+  constructor(code: number, reason?:string, eventInit? : EventInit) {
+    super("close", eventInit);
+    this.code = code;
+    this.reason = reason;
+  }
+}
+
+export class WebSocketPingEvent extends Event{
+  readonly data: Uint8Array;
+
+  constructor(data: Uint8Array, eventInit?: EventInit) {
+    super("ping", eventInit);
+    this.data = data;
+  }
+}
+
+export class WebSocketPongEvent extends Event{
+  readonly data: Uint8Array;
+
+  constructor(data: Uint8Array, eventInit?: EventInit) {
+    super("pong", eventInit);
+    this.data = data;
+  }
+}
 
 export class WebSocketIDed implements Identifier{
 	websocket: WebSocket;

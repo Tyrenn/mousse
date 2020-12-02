@@ -1,17 +1,17 @@
 //@ts-ignore
-import type { Context, ContextHandler } from "./context.ts"
+import type { Context, CommonContext, ContextHandler } from "./context.ts"
 //@ts-ignore
 import { match, Match, MatchFunction } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
 
 export class Route{
 	path: string;
 	slashes: number;
-	handlersStack : Array<ContextHandler> = new Array<ContextHandler>();
+	handlersStack : Array<ContextHandler<CommonContext>> = new Array<ContextHandler<CommonContext>>();
 	pathregexp : MatchFunction<Record<string,string>>;
 
 	params: Record<string, string> = {};
 
-	constructor(path : string, ...handlers : Array<ContextHandler>){
+	constructor(path : string, ...handlers : Array<ContextHandler<CommonContext>>){
 		this.path = path;
 		if (this.path.length > 1) {
 			this.path = this.path.replace(/\/$/, '');
@@ -45,7 +45,7 @@ export class Route{
 		}
 	}
 
-	addHandler(handler: ContextHandler) {
+	addHandler(handler: ContextHandler<CommonContext>) {
 		this.handlersStack.push(handler);
 	}
 

@@ -4,6 +4,17 @@ export interface ServerSentEventInit extends EventInit{
   space?: string | number;
 }
 
+export class ServerSentCloseEvent extends Event{
+  readonly code: number;
+  readonly reason?: string;
+
+  constructor(code: number, reason?:string, eventInit? : EventInit) {
+    super("close", eventInit);
+    this.code = code;
+    this.reason = reason;
+  }
+}
+
 export class ServerSentEvent extends Event{
   #type: string;
   #data: string = "";

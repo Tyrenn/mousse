@@ -5,7 +5,7 @@ import { serve, serveTLS } from "https://deno.land/std@0.78.0/http/server.ts";
 //@ts-ignore
 import { Router } from './router.ts';
 //@ts-ignore
-import { Context, ContextMethod, ContextHandlers } from './context.ts';
+import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext } from './context.ts';
 //@ts-ignore
 import { WebSocketPool } from './websocket.ts';
 //@ts-ignore
@@ -85,56 +85,54 @@ export class Mousse{
 		}
 	}*/
 
-	use(path: string, ...handlers: ContextHandlers): this{
-		this.router.use(path, ...handlers);
+	use<T extends CommonContext = Context>(path: string, ...handlers: ContextHandlers<T>): this{
+		this.router.use<T>(path, ...handlers);
 		return this;
 	}
 
 	//For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-	add(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers) : this {
-		this.router.add(method, path, ...handlers);
+	add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
+		this.router.add<T>(method, path, ...handlers);
 		return this;
 	}
-	
-	any(path?: string, ...handlers: ContextHandlers): this {
-		this.router.any(path, ...handlers);
+	any<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		this.router.any<T>(path, ...handlers);
 		return this;
 	}
-	
-	delete(path?: string, ...handlers : ContextHandlers) : this {
-		this.router.delete(path, ...handlers);
+	delete<T extends HTTPContext = HTTPContext>(path?: string, ...handlers : ContextHandlers<T>) : this {
+		this.router.delete<T>(path, ...handlers);
 		return this;
 	}
-	get(path?: string, ...handlers : ContextHandlers) : this {
-		this.router.get(path, ...handlers);
+	get<T extends CommonContext = HTTPContext>(path?: string, ...handlers : ContextHandlers<T>) : this {
+		this.router.get<T>(path, ...handlers);
 		return this;
 	}
-	head(path?: string, ...handlers: ContextHandlers) : this {
-		this.router.head(path, ...handlers);
+	head<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>) : this {
+		this.router.head<T>(path, ...handlers);
 		return this;
 	}
-	options(path?: string, ...handlers: ContextHandlers): this {
-		this.router.options(path, ...handlers);
+	options<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		this.router.options<T>(path, ...handlers);
 		return this;
 	}
-	patch(path?: string, ...handlers: ContextHandlers): this {
-		this.router.patch(path, ...handlers);
+	patch<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		this.router.patch<T>(path, ...handlers);
 		return this;
 	}
-	post(path?: string, ...handlers: ContextHandlers) : this {
-		this.router.post(path, ...handlers);
+	post<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>) : this {
+		this.router.post<T>(path, ...handlers);
 		return this;
 	}
-	put(path?: string, ...handlers: ContextHandlers): this {
-		this.router.put(path, ...handlers);
+	put<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		this.router.put<T>(path, ...handlers);
 		return this;
 	}
-	trace(path?: string, ...handlers: ContextHandlers): this {
-		this.router.trace(path, ...handlers);
+	trace<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		this.router.trace<T>(path, ...handlers);
 		return this;
 	}
-	ws(path : string, ...handlers : ContextHandlers) : this{
-		this.router.ws(path, ...handlers);
+	ws<T extends WSContext = WSContext>(path : string, ...handlers : ContextHandlers<T>) : this{
+		this.router.ws<T>(path, ...handlers);
 		return this;
 	}
 };
