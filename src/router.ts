@@ -1,9 +1,7 @@
 //@ts-ignore
-import { Context, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, isHandler } from "./context.ts";
+import { Context, SSEContext, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, isHandler } from "./context.ts";
 //@ts-ignore
 import { Route } from "./route.ts"
-//@ts-ignore
-import { isWebSocketConnectEvent } from "./websocket.ts";
 
 export class Router implements ContextHandler{
 	#routes : Record<ContextMethod, Array<Route>> = {
@@ -15,8 +13,7 @@ export class Router implements ContextHandler{
 		POST :      new Array<Route>(),
 		PUT :       new Array<Route>(),
 		TRACE:      new Array<Route>(),
-    WS:         new Array<Route>(),
-    SSE:        new Array<Route>()
+    WS:         new Array<Route>()
 	}
 
   #middlewares: Array<Route> = new Array<Route>();
@@ -29,33 +26,33 @@ export class Router implements ContextHandler{
 		this.handle = this.handleNoWS;
 	}
 
-	private makeHandler(fn: ContextHandlerFunction): ContextHandler{
+	private makeHandler(fn: ContextHandlerFunction<CommonContext>): ContextHandler<CommonContext>{
 		if (fn.length < 2) {
-			return {handle(context : Context, next? : () => Promise<void> | void){
+			return {handle(context : CommonContext, next? : () => Promise<void> | void){
 				fn.apply(this, [context])
 				if (next)
 					next();
 			}}
 		}
 		else {
-			return {handle(context:  Context, next? : () => Promise<void> | void){
+			return {handle(context:  CommonContext, next? : () => Promise<void> | void){
 				fn.apply(this, [context, next]);
 			}}  
 		}
 	}
 
-	use(path?: string, ...handlers: ContextHandlers): this{
+	use<T extends CommonContext = Context>(path?: string, ...handlers: ContextHandlers<T>): this{
     if (!path)
       path = "";
     
     for (var handler of handlers) {
 			//Check if Handler or HandlerFunction
-			if(isHandler(handler)){
-				this.#middlewares.push(new Route(path, handler));
+      if (isHandler<T>(handler)) {
+				this.#middlewares.push(new Route(path, handler as ContextHandler<CommonContext>));
 			}
 			else {
 				//Need to transform it as handler
-					this.#middlewares.push(new Route(path, this.makeHandler(handler)));
+					this.#middlewares.push(new Route(path, this.makeHandler(handler as ContextHandlerFunction<CommonContext>)));
 			}
 		}
     
@@ -63,7 +60,7 @@ export class Router implements ContextHandler{
 	}
 
 //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-	add(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers) : this {
+	add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
 		if (!path)
 			path = "";
 
@@ -83,53 +80,57 @@ export class Router implements ContextHandler{
 
 		for (var handler of handlers) {
 			//Check if Handler or HandlerFunction
-			if(isHandler(handler)){
-				(this.#routes[method])[index].addHandler(handler);
+      if (isHandler<T>(handler)) {
+				(this.#routes[method])[index].addHandler(handler as ContextHandler<CommonContext>);
 			}
-			else {
-				//Need to transform it as handler
-				(this.#routes[method])[index].addHandler(this.makeHandler(handler));
+      else {
+				(this.#routes[method])[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>));
 			}
 		}
 
 		return this;
 	}
 	
-	any(path?: string, ...handlers: ContextHandlers): this {
-		return this.add(["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], path, ...handlers);
+	any<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>(["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], path, ...handlers);
 	}
-	delete(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("DELETE", path, ...handlers);
+	delete<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("DELETE", path, ...handlers);
 	}
-	get(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("GET", path, ...handlers);
+	get<T extends CommonContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("GET", path, ...handlers);
 	}
-	head(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("HEAD", path, ...handlers);
+	head<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("HEAD", path, ...handlers);
 	}
-	options(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("OPTIONS", path, ...handlers);
+	options<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("OPTIONS", path, ...handlers);
 	}
-	patch(path?: string, ...handlers: ContextHandlers) : this {
-		return this.add("PATCH", path, ...handlers);
+	patch<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>) : this {
+		return this.add<T>("PATCH", path, ...handlers);
 	}
-	post(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("POST", path, ...handlers);
+	post<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("POST", path, ...handlers);
 	}
-	put(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("PUT", path, ...handlers);
+	put<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("PUT", path, ...handlers);
 	}
-	trace(path?: string, ...handlers: ContextHandlers): this {
-		return this.add("TRACE", path, ...handlers);
+	trace<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+		return this.add<T>("TRACE", path, ...handlers);
 	}
 
-	ws(path?: string, ...handlers: ContextHandlers): Router{
+	ws<T extends WSContext = WSContext>(path?: string, ...handlers: ContextHandlers<T>): this{
 		if (!this.#wsupgraded)
 			this.wsupgrade();
 		if (!path)
 			path = "";
-		return this.add("WS", path, ...handlers);
-	}
+		return this.add<T>("WS", path, ...handlers);
+  }
+
+  sse<T extends SSEContext = SSEContext>(path?: string, ...handlers: ContextHandlers<T>): this{
+    let firsthandler = async (c: T) => { await c.sustain(); };
+    return this.add<T>("GET", path, firsthandler, ...handlers);
+  }
 
 	get wsupgraded(): boolean{
 		return this.#wsupgraded;
@@ -150,8 +151,6 @@ export class Router implements ContextHandler{
       return;
     }
 
-    console.log("URLPCD : ", context.urlpcd);
-
 		let matched: boolean = false;
 		//Finding a route that matches the request url
 		let remainingUrl : string = context.url.replace(context.urlpcd, "");
@@ -171,7 +170,7 @@ export class Router implements ContextHandler{
     }
 		//console.log("matched :",  matched);
 
-		if(context.event && isWebSocketConnectEvent(context.event) && !matched) {
+		if(!matched) {
 			context.close();
     }
 
@@ -181,7 +180,6 @@ export class Router implements ContextHandler{
 
 	//handle dispatches context to corresponding route
 	private handleNoWS = async (context: Context, next?: () => void) => {
-    console.log("URLPCD : ", context.urlpcd);
   
     /* Classic Handling */
 		//Finding a route that matches the request url
