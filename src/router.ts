@@ -1,9 +1,7 @@
 //@ts-ignore
-import { Context, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, isHandler } from "./context.ts";
+import { Context, SSEContext, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, isHandler } from "./context.ts";
 //@ts-ignore
 import { Route } from "./route.ts"
-//@ts-ignore
-import { isWebSocketConnectEvent } from "./websocket.ts";
 
 export class Router implements ContextHandler{
 	#routes : Record<ContextMethod, Array<Route>> = {
@@ -15,8 +13,7 @@ export class Router implements ContextHandler{
 		POST :      new Array<Route>(),
 		PUT :       new Array<Route>(),
 		TRACE:      new Array<Route>(),
-    WS:         new Array<Route>(),
-    SSE:        new Array<Route>()
+    WS:         new Array<Route>()
 	}
 
   #middlewares: Array<Route> = new Array<Route>();
@@ -122,12 +119,17 @@ export class Router implements ContextHandler{
 		return this.add<T>("TRACE", path, ...handlers);
 	}
 
-	ws<T extends WSContext = WSContext>(path?: string, ...handlers: ContextHandlers<T>): Router{
+	ws<T extends WSContext = WSContext>(path?: string, ...handlers: ContextHandlers<T>): this{
 		if (!this.#wsupgraded)
 			this.wsupgrade();
 		if (!path)
 			path = "";
 		return this.add<T>("WS", path, ...handlers);
+  }
+
+  sse<T extends SSEContext = SSEContext>(path?: string, ...handlers: ContextHandlers<T>): this{
+    let firsthandler = async (c: T) => { await c.sustain(); };
+    return this.add<T>("GET", path, firsthandler, ...handlers);
   }
 
 	get wsupgraded(): boolean{
@@ -148,8 +150,6 @@ export class Router implements ContextHandler{
       context.upgrade(this.handleWS);
       return;
     }
-
-    console.log("URLPCD : ", context.urlpcd);
 
 		let matched: boolean = false;
 		//Finding a route that matches the request url
@@ -180,7 +180,6 @@ export class Router implements ContextHandler{
 
 	//handle dispatches context to corresponding route
 	private handleNoWS = async (context: Context, next?: () => void) => {
-    console.log("URLPCD : ", context.urlpcd);
   
     /* Classic Handling */
 		//Finding a route that matches the request url

@@ -1,5 +1,5 @@
 //@ts-ignore
-import type { Response, ServerRequest} from "https://deno.land/std@0.78.0/http/server.ts"
+import type { Response, ServerRequest } from "https://deno.land/std@0.78.0/http/server.ts"
 //@ts-ignore
 import { acceptable, acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, isWebSocketPongEvent, WebSocket, WebSocketMessage } from "https://deno.land/std@0.78.0/ws/mod.ts";
 //@ts-ignore
@@ -11,7 +11,7 @@ import { WebSocketPool, WebSocketIDed, WebSocketEvent, WebSocketEventListener, W
 //@ts-ignore
 import { ServerSentEvent, ServerSentCloseEvent } from './serversentevent.ts';
 
-export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS" | "SSE";
+export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS";
 
 export interface ContextHandler<T extends CommonContext = Context>{
 	handle: ContextHandlerFunction<T>;
@@ -35,9 +35,10 @@ export interface CommonContext<D = any> {
   urlpcd: string;
   data?: D;
 
-  upgradable : boolean;
+  upgradable: boolean;
+  sustainable: boolean;
   upgrade: (handler?: ContextHandlerFunction) => Promise<WSContext>;
-  keepalive: () => Promise<SSEContext>;
+  sustain: () => Promise<SSEContext>;
   dispatchEvent : (event: Event) => boolean | undefined;
   in: (roomname: string) => WebSocketPool;
   on : <T extends Event = Event>(type: string, listener: (ev: T) => void, options?: boolean | AddEventListenerOptions | undefined) => this;
@@ -120,8 +121,37 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
   get upgradable() : boolean{
-		return (!this.#websocket && acceptable(this.request));
+		return (!this.#issse && !this.#iswebsocket && acceptable(this.request));
   }
+
+  get sustainable(): boolean{
+    return (!this.#issse && !this.#iswebsocket);
+  }
+
+   close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) => {
+    if (closeEvent) {
+      this.#eventtarget.dispatchEvent(closeEvent);
+    }
+    else {
+      this.#eventtarget.dispatchEvent(new Event("close", {cancelable : false}));
+    }
+      
+    if (this.#iswebsocket && this.#websocket) {
+      for (let websocketpool of this.mousse.websockets.values()) {
+        websocketpool.rm(this.#websocket);
+      }
+      if(!this.#websocket.websocket.isClosed)
+        await this.#websocket.websocket.close(1000).catch(console.error);
+      this.#iswebsocket = false;
+      this.#websocket = undefined;
+    }
+    if (this.#issse) {
+      if (this.#ready !== true) {
+        await this.#ready;
+      }
+      await this.#prev;
+    }
+	}
 
 	//HTTP Type Methods
   async respond(res?: Response) {
@@ -157,8 +187,9 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
   
   //SSE Methods
-  async keepalive(): Promise<SSEContext<D>>{
-    this.#ready = this.#ssesetup();
+  async sustain(): Promise<SSEContext<D>>{
+    if(!this.#issse && !this.#iswebsocket)
+      this.#ready = this.#ssesetup();
     return this;
   }
 
@@ -167,8 +198,6 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       try {
         await this.request.w.write(sseencoder.encode(headers));
         await this.request.w.flush();
-        console.log("KEPTPALIVE");
-        this.method = "SSE";
         this.#issse = true;
         this.#prev = Promise.resolve();
       } catch (error) {
@@ -214,13 +243,14 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
 	//WS Type Methods
-	async upgrade(handler? : ContextHandlerFunction) : Promise<WSContext>{
-    this.#ready = this.#wssetup(handler);
+  async upgrade(handler?: ContextHandlerFunction): Promise<WSContext>{
+    if(!this.#issse && !this.#iswebsocket)
+      this.#ready = this.#wssetup(handler);
     return this;
   }
   
   #wssetup = async (handler?: ContextHandlerFunction): Promise<void> => {
-    if (!this.#iswebsocket && this.upgradable) {
+    if (this.upgradable) {
       if (!this.#issse) {
         await this.close();
       }
@@ -318,30 +348,5 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   async ping(data?: WebSocketMessage) {
     if(this.#iswebsocket)
 		  await this.#websocket?.websocket.ping(data);
-	}
-
-  close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) => {
-    if (closeEvent) {
-      this.#eventtarget.dispatchEvent(closeEvent);
-    }
-    else {
-      this.#eventtarget.dispatchEvent(new Event("close", {cancelable : false}));
-    }
-      
-    if (this.#iswebsocket && this.#websocket) {
-      for (let websocketpool of this.mousse.websockets.values()) {
-        websocketpool.rm(this.#websocket);
-      }
-      if(!this.#websocket.websocket.isClosed)
-        await this.#websocket.websocket.close(1000).catch(console.error);
-      this.#iswebsocket = false;
-      this.#websocket = undefined;
-    }
-    if (this.#issse) {
-      if (this.#ready !== true) {
-        await this.#ready;
-      }
-      await this.#prev;
-    }
 	}
 }

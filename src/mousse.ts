@@ -5,12 +5,9 @@ import { serve, serveTLS } from "https://deno.land/std@0.78.0/http/server.ts";
 //@ts-ignore
 import { Router } from './router.ts';
 //@ts-ignore
-import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext } from './context.ts';
+import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext } from './context.ts';
 //@ts-ignore
 import { WebSocketPool } from './websocket.ts';
-//@ts-ignore
-import { acceptWebSocket, acceptable, isWebSocketCloseEvent, WebSocket } from 'https://deno.land/std@0.78.0/ws/mod.ts';
-
 export interface MousseOptions{
 	port: number,
 	hostname?: string,
@@ -134,5 +131,10 @@ export class Mousse{
 	ws<T extends WSContext = WSContext>(path : string, ...handlers : ContextHandlers<T>) : this{
 		this.router.ws<T>(path, ...handlers);
 		return this;
-	}
+  }
+  
+  sse<T extends SSEContext = SSEContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    this.router.sse<T>(path, ...handlers);
+    return this;
+  }
 };
