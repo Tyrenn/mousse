@@ -97,59 +97,63 @@ export class WebSocketIDed implements Identifier{
 
 export class WebSocketPool{
 
-	private websockets: Array<WebSocketIDed>;
+	#websockets: Array<WebSocketIDed>;
 
 	constructor(...websockets: Array<WebSocketIDed>) {
-		this.websockets = websockets;
+		this.#websockets = websockets;
 	}
+
+  clone(): WebSocketPool{
+    return new WebSocketPool(...this.#websockets);
+  }
 
 	add(ws: WebSocketIDed) {
 		if (!this.has(ws))
-			this.websockets.push(ws);
+			this.#websockets.push(ws);
 	}
 
 	rm(ws: Identifier | string) {
 		let index : number = -1;
 		if (typeof ws === "string") {
-			index = this.websockets.findIndex((socket) => socket.id == ws)
+			index = this.#websockets.findIndex((socket) => socket.id == ws)
 
 		}
 		else {
-			index = this.websockets.findIndex((socket) => socket.id == ws.id)
+			index = this.#websockets.findIndex((socket) => socket.id == ws.id)
 		}
 		if(index > -1)
-			this.websockets.splice(index,1);
+			this.#websockets.splice(index,1);
 	}
 
 	get length(): number{
-		return this.websockets.length;
+		return this.#websockets.length;
 	}
 
 	has(ws: Identifier | string): boolean {
 		if (typeof ws === "string") {
-			return (this.websockets.findIndex((socket) => socket.id == ws)) > -1;
+			return (this.#websockets.findIndex((socket) => socket.id == ws)) > -1;
 		}
 		else {
-			return (this.websockets.findIndex((socket) => socket.id == ws.id)) > -1;
+			return (this.#websockets.findIndex((socket) => socket.id == ws.id)) > -1;
 		}
 		
 	}
 
-	broadcast(data : WebSocketMessage) {
-		for (let ws of this.websockets) {
-			ws.websocket.send(data);
+	async broadcast(data : WebSocketMessage) {
+		for (let ws of this.#websockets) {
+			await ws.websocket.send(data);
 		}
 	}
 	
-	send(ws: Identifier | string, data: WebSocketMessage) {
+	async send(ws: Identifier | string, data: WebSocketMessage) {
 		let index: number = -1;
 		if (typeof ws === "string") {
-			index = this.websockets.findIndex((socket) => socket.id == ws)
+			index = this.#websockets.findIndex((socket) => socket.id == ws)
 		}
 		else {
-			index = this.websockets.findIndex((socket) => socket.id == ws.id)
+			index = this.#websockets.findIndex((socket) => socket.id == ws.id)
 		}
 		if (index > -1)
-			this.websockets[index].websocket.send(data);
+			await this.#websockets[index].websocket.send(data);
 	}
 }

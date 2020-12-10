@@ -24,12 +24,12 @@ export class Route{
 	}
 
 	match(path : string) : Boolean{
-    console.log("Remaining ", path, "  To match on ", this.path);
+    //console.log("Remaining ", path, "  To match on ", this.path);
 
 		path = ((path.split('/')).splice(0, this.slashes)).join("/");
     if (path != null) {
 			let match: Match<Record<string,string>> = this.pathregexp(path);
-			console.log("Matched : ", match);
+			//console.log("Matched : ", match);
 			if (typeof match != "boolean") {
 				this.params = match.params;
 				

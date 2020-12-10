@@ -8,6 +8,10 @@ import { Router } from './router.ts';
 import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext } from './context.ts';
 //@ts-ignore
 import { WebSocketPool } from './websocket.ts';
+//@ts-ignore
+import { SSEPool } from "./serversentevent.ts";
+
+
 export interface MousseOptions{
 	port: number,
 	hostname?: string,
@@ -21,9 +25,11 @@ export class Mousse{
 	router = new Router();
 
 	websockets: Map<string, WebSocketPool> = new Map<string, WebSocketPool>();
-
-	//#wsupgraded: boolean = false;
-	started: boolean = false;
+  sses: Map<string, SSEPool> = new Map<string, SSEPool>();
+  
+  started: boolean = false;
+  //? Thinking of an ERROR HANDLING
+  #eventtarget: EventTarget = new EventTarget();
 
 	//start: () => Promise<void>;
 
@@ -35,52 +41,23 @@ export class Mousse{
 		else {
 			this.server = serve(opt as HTTPOptions);
 		}
-		//this.start = this.startNoWS;
 	}
-/*
-	private async startWS() {
-		if (!this.started) {
-			this.started = true;
-			for await (const req of this.server) {
-				let context = new Context(this, req);
-				if (context.wsUpgradable()) {
-					context.wsupgrade(this.handleWS);
-				}
-				else {
-					this.router.handle(new Context(this, req), () => { });
-				}
-			}
-		}
-	}
-
-	private async startNoWS() {
-		if (!this.started) {
-			this.started = true;
-			for await (const req of this.server) {
-				this.router.handle(new Context(this, req), () => {});
-			}
-		}
-	}
-  */
 
   async start() {
 		if (!this.started) {
 			this.started = true;
       for await (const req of this.server) {
-        console.log("\n\n-----\n");
         let c = new Context(this, req)
-        console.log(c.method, c.url);
 				this.router.handle(c);
 			}
 		}
-	}
-/*
-	private wsupgrade(): void {
-		if (!this.#wsupgraded) {
-			this.#wsupgraded = true;
-			this.start = this.startWS;	
-		}
-	}*/
+  }
+  
+  async close(): Promise<void> {
+    if (this.server) {
+      this.server.close();
+    }
+  }
 
 	use<T extends CommonContext = Context>(path: string, ...handlers: ContextHandlers<T>): this{
 		this.router.use<T>(path, ...handlers);
