@@ -11,7 +11,7 @@ Mousse is a Deno web server framework developed in typescrit. It provides simple
 ## Quick Start
 
 ```ts
-import { Mousse } from "https://github.com/Tyrenn/mousse/mod.ts"
+import { Mousse } from "https://github.com/Tyrenn/mousse/raw/main/mod.ts"
 
 let mousse = new Mousse({port : 8080});
 

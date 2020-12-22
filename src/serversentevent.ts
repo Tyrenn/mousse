@@ -1,6 +1,4 @@
-import { ServerRequest } from 'https://deno.land/std@0.78.0/http/server.ts';
-import { v4 } from 'https://deno.land/std@0.78.0/uuid/mod.ts';
-import { encode } from "https://deno.land/std@0.78.0/encoding/utf8.ts";
+import { ServerRequest, v4, encode } from './ext.ts';
 
 export type Identifier = { id: string }
 

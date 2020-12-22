@@ -1,7 +1,5 @@
-//@ts-ignore
 import type { Context, CommonContext, ContextHandler } from "./context.ts"
-//@ts-ignore
-import { match, Match, MatchFunction } from 'https://deno.land/x/path_to_regexp@v6.2.0/index.ts'
+import { match, Match, MatchFunction } from './ext.ts'
 
 export class Route{
 	path: string;
@@ -45,9 +43,14 @@ export class Route{
 		}
 	}
 
-	addHandler(handler: ContextHandler<CommonContext>) {
-		this.handlersStack.push(handler);
-	}
+  addHandler(handler: ContextHandler<CommonContext>, index?: number) {
+    if (index) {
+      this.handlersStack.splice(index, 0, handler);
+    }
+    else {
+      this.handlersStack.push(handler);
+    }
+  }
 
 	handle(context : Context){
 
@@ -55,7 +58,8 @@ export class Route{
 		let urlpcd : string = context.urlpcd + this.path;
 		let params : Record<string, string> = { ...context.params, ...this.params };
 		let stack : Array<ContextHandler> = this.handlersStack;
-		let idx : number = 0;
+    let idx: number = 0;
+    
 		let next = function (){
 			if(idx < stack.length){
 				//Request infos are reset before dispatching context to same level handlers

@@ -1,9 +1,4 @@
-//@ts-ignore
-import { isWebSocketCloseEvent, WebSocket, WebSocketMessage } from 'https://deno.land/std@0.78.0/ws/mod.ts';
-//@ts-ignore
-import { v4 } from 'https://deno.land/std@0.78.0/uuid/mod.ts';
-//@ts-ignore
-import { hasOwnProperty } from "https://deno.land/std@0.78.0/_util/has_own_property.ts";
+import { isWebSocketCloseEvent, WebSocket, WebSocketMessage, v4 } from './ext.ts';
 
 export type Identifier = { id: string }
 
@@ -21,16 +16,22 @@ export type WebSocketEvent = Event | WebSocketTextEvent | WebSocketBinaryEvent |
 
 export type WebSocketEventListener = WebSocketBinaryEventListener | WebSocketTextEventListener;
 
+export type WebSocketEventListenerObject = WebSocketBinaryEventListenerObject | WebSocketTextEventListenerObject;
+
 export interface WebSocketBinaryEventListener {
   (event: WebSocketBinaryEvent): void | Promise<void>;
 }
 
-export interface WebSocketTextEventListener{
-  (event: WebSocketTextEvent): void | Promise<void>;
+export interface WebSocketBinaryEventListenerObject {
+  handleEvent(evt: WebSocketBinaryEvent): void | Promise<void>;
 }
 
 export interface WebSocketTextEventListener{
   (event: WebSocketTextEvent): void | Promise<void>;
+}
+
+export interface WebSocketTextEventListenerObject {
+  handleEvent(evt: WebSocketTextEvent): void | Promise<void>;
 }
 
 export class WebSocketTextEvent extends Event{

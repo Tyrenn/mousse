@@ -13,7 +13,7 @@ mousse.start();
 
 bench({
   name: "simple mousse app",
-  runs: 80,
+  runs: 5000000,
   async func(b : any): Promise<void> {
     b.start();
     const conns = [];

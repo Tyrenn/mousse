@@ -1,23 +1,7 @@
-//@ts-ignore
-import { Status, Response, ServerRequest } from "https://deno.land/std@0.78.0/http/mod.ts"
-//@ts-ignore
-import { acceptable, acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, isWebSocketPongEvent, WebSocket, WebSocketMessage } from "https://deno.land/std@0.78.0/ws/mod.ts";
-//@ts-ignore
-import { v4 } from "https://deno.land/std@0.78.0/uuid/mod.ts";
-//@ts-ignore
-import { join } from "https://deno.land/std@0.80.0/path/mod.ts";
-//@ts-ignore
-import { encode } from "https://deno.land/std@0.78.0/encoding/utf8.ts";
-
-//@ts-ignore
-import { getContentType , MIME} from "./mime.ts"
-//@ts-ignore
+import { Status, Response, ServerRequest, mime, encode, join, v4, acceptable, acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, isWebSocketPongEvent, WebSocket, WebSocketMessage } from "./ext.ts";
 import { Mousse } from './mousse.ts';
-//@ts-ignore
 import { WebSocketPool, WebSocketIDed, WebSocketEvent, WebSocketEventListener, WebSocketEventListenerObject, WebSocketTextEvent, WebSocketPingEvent, WebSocketPongEvent, WebSocketCloseEvent, WebSocketBinaryEvent } from './websocket.ts';
-//@ts-ignore
 import { ServerSentEvent, ServerSentCloseEvent, SSEIDed, SSEPool } from './serversentevent.ts';
-
 
 export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS";
 
@@ -281,7 +265,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   async file(filepath: string): Promise<this> {
     filepath = join(Deno.cwd(), filepath);
     try {
-      this.blob(await Deno.readFile(filepath), getContentType(filepath));
+      this.blob(await Deno.readFile(filepath), mime.getType(filepath));
     } catch {
       console.error("File not found !");
     }
@@ -341,7 +325,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
 
   out(type: string, listener: WebSocketEventListenerObject | WebSocketEventListener | EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) : this {
     if (listener) {
-      this.#eventtarget.removeEventListener(type, listener, options);
+      this.#eventtarget.removeEventListener(type, listener as (EventListener | EventListenerObject | null), options);
     }
     else {
       this.#eventtarget.removeEventListener(type, (...any: any[]): any => { }, options);

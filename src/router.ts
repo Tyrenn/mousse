@@ -1,7 +1,7 @@
-//@ts-ignore
 import { Context, SSEContext, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, isHandler } from "./context.ts";
-//@ts-ignore
 import { Route } from "./route.ts"
+//@ts-ignore
+import { extname, mime } from "./ext.ts";
 
 export class Router implements ContextHandler{
 	#routes : Record<ContextMethod, Array<Route>> = {
@@ -39,7 +39,63 @@ export class Router implements ContextHandler{
 				fn.apply(this, [context, next]);
 			}}  
 		}
-	}
+  };
+  
+  static(path?: string, extensions?: string | Array<string>): this{
+    if (!path)
+      path = "";
+    
+    let index : number = this.#routes["GET"].findIndex(route => route.path === path);
+    if (index < 0) {
+      (this.#routes["GET"]).push(new Route(path));
+      index = (this.#routes["GET"]).length - 1;
+    }
+    
+    if (extensions) {
+      if (Array.isArray(extensions)) {
+        for (var ext of extensions) {
+          if (!mime.getType(ext)) {
+            console.error("Unkown type of extension");
+            return this;
+          }
+        }
+      }
+      else {
+        if (!mime.getType(extensions)) {
+          console.error("Unkown type of extension");
+          return this;
+        }
+      }
+    }
+
+
+    let handler: ContextHandler<HTTPContext>;
+    if (extensions) {
+      handler = {
+        async handle(context: HTTPContext, next?: () => Promise<void> | void) {
+          console.log(extname(context.request.url));
+          console.log(extensions);
+          if (extensions === extname(context.request.url) || extensions.includes(extname(context.request.url))) {
+            //console.log(context.request.url);
+            await context.file(context.request.url);
+            context.respond();
+          } 
+        }
+      }
+    }
+    else {
+      handler = {
+        async handle(context: HTTPContext, next?: () => Promise<void> | void) {
+            //console.log(context.request.url);
+            await context.file(context.request.url);
+            context.respond();
+        }
+      }
+    }
+    this.#routes["GET"][index].addHandler(handler as ContextHandler<CommonContext>);
+
+    return this;
+  }
 
 	use<T extends CommonContext = Context>(path?: string, ...handlers: ContextHandlers<T>): this{
     if (!path)
@@ -59,65 +115,65 @@ export class Router implements ContextHandler{
     return this;
 	}
 
-//For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-	add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
-		if (!path)
-			path = "";
+  //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
+  add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
+    if (!path)
+      path = "";
 
-		if (Array.isArray(method)) {
-			for (let m of method) {
-				this.add(m, path, ...handlers);
-			}
-			return this;
-		}
+    if (Array.isArray(method)) {
+      for (let m of method) {
+        this.add(m, path, ...handlers);
+      }
+      return this;
+    }
 
-		//?Find the corresponding route
-		let index : number = this.#routes[method].findIndex(route => route.path === path);
-		if (index < 0) {
-			(this.#routes[method]).push(new Route(path));
-			index = (this.#routes[method]).length - 1;
-		}
+    //?Find the corresponding route
+    let index : number = this.#routes[method].findIndex(route => route.path === path);
+    if (index < 0) {
+      (this.#routes[method]).push(new Route(path));
+      index = (this.#routes[method]).length - 1;
+    }
 
-		for (var handler of handlers) {
-			//Check if Handler or HandlerFunction
+    for (var handler of handlers) {
+      //Check if Handler or HandlerFunction
       if (isHandler<T>(handler)) {
-				(this.#routes[method])[index].addHandler(handler as ContextHandler<CommonContext>);
-			}
+        (this.#routes[method])[index].addHandler(handler as ContextHandler<CommonContext>);
+      }
       else {
-				(this.#routes[method])[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>));
-			}
-		}
+        (this.#routes[method])[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>));
+      }
+    }
 
-		return this;
-	}
-	
-	any<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>(["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], path, ...handlers);
-	}
-	delete<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("DELETE", path, ...handlers);
-	}
-	get<T extends CommonContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("GET", path, ...handlers);
-	}
-	head<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("HEAD", path, ...handlers);
-	}
-	options<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("OPTIONS", path, ...handlers);
-	}
-	patch<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>) : this {
-		return this.add<T>("PATCH", path, ...handlers);
-	}
-	post<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("POST", path, ...handlers);
-	}
-	put<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("PUT", path, ...handlers);
-	}
-	trace<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
-		return this.add<T>("TRACE", path, ...handlers);
-	}
+    return this;
+  }
+
+  any<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>(["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"], path, ...handlers);
+  }
+  delete<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("DELETE", path, ...handlers);
+  }
+  get<T extends CommonContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("GET", path, ...handlers);
+  }
+  head<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("HEAD", path, ...handlers);
+  }
+  options<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("OPTIONS", path, ...handlers);
+  }
+  patch<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>) : this {
+    return this.add<T>("PATCH", path, ...handlers);
+  }
+  post<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("POST", path, ...handlers);
+  }
+  put<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("PUT", path, ...handlers);
+  }
+  trace<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+    return this.add<T>("TRACE", path, ...handlers);
+  }
 
 	ws<T extends WSContext = WSContext>(path?: string, ...handlers: ContextHandlers<T>): this{
 		if (!this.#wsupgraded)
@@ -155,9 +211,9 @@ export class Router implements ContextHandler{
 		//Finding a route that matches the request url
 		let remainingUrl : string = context.url.replace(context.urlpcd, "");
 
-		for (let route of this.#routes[context.method]) {
+    for (let route of this.#routes[context.method]) {
 			if (route.match(remainingUrl)) {
-				matched = true;
+        matched = true;
 				route.handle(context);
 			}
     }

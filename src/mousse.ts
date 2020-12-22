@@ -1,14 +1,7 @@
-//@ts-ignore
-import type { HTTPOptions, HTTPSOptions, Server } from "https://deno.land/std@0.78.0/http/server.ts";
-//@ts-ignore
-import { serve, serveTLS } from "https://deno.land/std@0.78.0/http/server.ts";
-//@ts-ignore
+import { HTTPOptions, HTTPSOptions, Server, serve, serveTLS } from "./ext.ts";
 import { Router } from './router.ts';
-//@ts-ignore
 import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext } from './context.ts';
-//@ts-ignore
 import { WebSocketPool } from './websocket.ts';
-//@ts-ignore
 import { SSEPool } from "./serversentevent.ts";
 
 
@@ -57,6 +50,11 @@ export class Mousse{
     if (this.server) {
       this.server.close();
     }
+  }
+
+  static(path?: string, extensions?: string | Array<string>): this{
+    this.router.static(path, extensions);
+    return this;
   }
 
 	use<T extends CommonContext = Context>(path: string, ...handlers: ContextHandlers<T>): this{

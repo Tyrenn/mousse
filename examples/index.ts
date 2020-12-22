@@ -1,14 +1,22 @@
 //@ts-ignore
-import { Mousse, Router, WSContext, HTTPContext, WebSocketTextEvent, WebSocketEvent } from "./mod.ts";
+import { Mousse, Router, WSContext, HTTPContext, WebSocketTextEvent, WebSocketEvent } from "../mod.ts";
 
+
+// Create Mousse App
 let mousse = new Mousse({port : 8080});
 
+
+// Set static route for ressources like css
+mousse.static("/examples/res", ["svg"]);
+
+
+// Create a new router
 let kindRouter = new Router();
 
 kindRouter.get("/:kind",
     function (context: HTTPContext) {
         context.respond({
-            status: 200, body: context.data + " Path says : " + context.params.kind
+            status: 200, body: " Path says : " + context.params.kind
         });
     }
 );
@@ -17,21 +25,21 @@ kindRouter.get("/soap", (c) => {
   console.log("Special type !")
 })
 
-mousse.any("/kind", kindRouter);
+// Bind the router using use() method which will consider bubbleRouter as a middleware an let the context get through without any treatment
+mousse.use("/kind", kindRouter);
 
-// ANOTHER ROUTER
 
+// Create another router
 let bubbleRouter = new Router();
-
 bubbleRouter.get("", (c) => {
   c.respond({ status: 200, body: "I'm a Mousse bubble !" });
 });
 
-
+// Bind the router to /bubble routes using any() method which let only http context get through
 mousse.any("/bubble", bubbleRouter);
 
-// HANDLING WEBSOCKET
 
+// Using ws for an internal websocket handling
 mousse.ws("/popping", async (c : WSContext) => {
     c.on("text", (event : WebSocketTextEvent) => {
       console.log("It says :", event.data);
@@ -52,4 +60,6 @@ mousse.ws("/popping", async (c : WSContext) => {
 	}
 );
 
+
+// Start the mousse app
 mousse.start();
