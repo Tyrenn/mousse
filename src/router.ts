@@ -27,13 +27,15 @@ export class Router implements ContextHandler{
 	}
 
 	private makeHandler(fn: ContextHandlerFunction<CommonContext>): ContextHandler<CommonContext>{
-		if (fn.length < 2) {
+		//Has no next parameter
+    if (fn.length < 2) {
 			return {handle(context : CommonContext, next? : () => Promise<void> | void){
 				fn.apply(this, [context])
 				if (next)
 					next();
 			}}
-		}
+    }
+    //Has a next parameter
 		else {
 			return {handle(context:  CommonContext, next? : () => Promise<void> | void){
 				fn.apply(this, [context, next]);
@@ -73,8 +75,6 @@ export class Router implements ContextHandler{
     if (extensions) {
       handler = {
         async handle(context: HTTPContext, next?: () => Promise<void> | void) {
-          console.log(extname(context.request.url));
-          console.log(extensions);
           if (extensions === extname(context.request.url) || extensions.includes(extname(context.request.url))) {
             //console.log(context.request.url);
             await context.file(context.request.url);
@@ -86,13 +86,12 @@ export class Router implements ContextHandler{
     else {
       handler = {
         async handle(context: HTTPContext, next?: () => Promise<void> | void) {
-            //console.log(context.request.url);
             await context.file(context.request.url);
             context.respond();
         }
       }
     }
-    this.#routes["GET"][index].addHandler(handler as ContextHandler<CommonContext>);
+    this.#routes["GET"][index].addHandler(handler as ContextHandler<CommonContext>, 0);
 
     return this;
   }
@@ -115,7 +114,6 @@ export class Router implements ContextHandler{
     return this;
 	}
 
-  //For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
   add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
     if (!path)
       path = "";
@@ -127,7 +125,6 @@ export class Router implements ContextHandler{
       return this;
     }
 
-    //?Find the corresponding route
     let index : number = this.#routes[method].findIndex(route => route.path === path);
     if (index < 0) {
       (this.#routes[method]).push(new Route(path));
@@ -183,8 +180,9 @@ export class Router implements ContextHandler{
 		return this.add<T>("WS", path, ...handlers);
   }
 
+  //Will sustain the request before applying any other handler
   sse<T extends SSEContext = SSEContext>(path?: string, ...handlers: ContextHandlers<T>): this{
-    let firsthandler = async (c: T) => { await c.sustain(); };
+    let firsthandler = async (c: T, next?: (() => void)) => { await c.sustain(); if(next) next(); };
     return this.add<T>("GET", path, firsthandler, ...handlers);
   }
 

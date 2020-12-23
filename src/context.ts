@@ -1,4 +1,4 @@
-import { Status, Response, ServerRequest, mime, encode, join, v4, acceptable, acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, isWebSocketPongEvent, WebSocket, WebSocketMessage } from "./ext.ts";
+import { Status, Response, ServerRequest, mime, encode, join, v4, acceptable, extname, getCookies, setCookie, Cookie, Cookies,  acceptWebSocket, isWebSocketCloseEvent, isWebSocketPingEvent, isWebSocketPongEvent, WebSocket, WebSocketMessage } from "./ext.ts";
 import { Mousse } from './mousse.ts';
 import { WebSocketPool, WebSocketIDed, WebSocketEvent, WebSocketEventListener, WebSocketEventListenerObject, WebSocketTextEvent, WebSocketPingEvent, WebSocketPongEvent, WebSocketCloseEvent, WebSocketBinaryEvent } from './websocket.ts';
 import { ServerSentEvent, ServerSentCloseEvent, SSEIDed, SSEPool } from './serversentevent.ts';
@@ -31,7 +31,8 @@ export interface CommonContext<D = any> {
   url: string;
   urlpcd: string;
   data?: D;
-
+  readonly cookies: Cookies;
+  
   upgradable: boolean;
   sustainable: boolean;
   upgrade: (handler?: ContextHandlerFunction) => Promise<WSContext>;
@@ -39,12 +40,13 @@ export interface CommonContext<D = any> {
   dispatchEvent : (event: Event) => boolean | undefined;
   in: (roomname: string) => StreamPool;
   on : <T extends Event = Event>(type: string, listener: (ev: T) => void, options?: boolean | AddEventListenerOptions | undefined) => this;
-  out: (type: string, listener: EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) => this;
+  off: (type: string, listener: EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) => this;
+  setCookie: (c: Cookie) => this;
 }
 
 export interface SSEContext<D = any> extends CommonContext<D>{
-  send: (data: string | Uint8Array | ServerSentEvent) => Promise<void>;
-  close: (closeEvent: ServerSentCloseEvent) => Promise<void>;
+  send: (data: string | Uint8Array | ServerSentEvent) => Promise<this>;
+  close: (closeEvent: ServerSentCloseEvent) => Promise<this>;
   join : (roomname : string) => this;
 	quit : (roomname : string) => this;
 }
@@ -62,9 +64,9 @@ export interface WSContext<D = any> extends CommonContext<D>{
   
 	join : (roomname : string) => this;
 	quit : (roomname : string) => this;
-	send: (data: string | Uint8Array) => Promise<void>;
-	ping: (data: string | Uint8Array) => Promise<void>;
-  close: (closeEvent : WebSocketCloseEvent) => Promise<void>;
+	send: (data: string | Uint8Array) => Promise<this>;
+	ping: (data: string | Uint8Array) => Promise<this>;
+  close: (closeEvent : WebSocketCloseEvent) => Promise<this>;
 }
 
 
@@ -82,7 +84,10 @@ export interface HTTPContext<D = any> extends CommonContext<D>{
   json : (data: Record<string, any> | string, code?: Status) => this;
   html: (data: string, code?: Status) => this;
   blob: (data: Uint8Array | Deno.Reader, contentType?: string, code?: Status) => this;
-  file: (filepath: string) => Promise<this>
+  file: (filepath: string) => Promise<this>;
+  renderFile : (filepath: string) => Promise<this>;
+  render: (ext : string, data : any) => Promise<this>;
+  redirect: (url: string, code?: Status) => Promise<void>;
 }
 
 
@@ -145,14 +150,14 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
   get upgradable() : boolean{
-		return (!this.#issse && !this.#iswebsocket && acceptable(this.request));
+		return (!this.#answered && !this.#issse && !this.#iswebsocket && acceptable(this.request));
   }
 
   get sustainable(): boolean{
-    return (!this.#issse && !this.#iswebsocket);
+    return (!this.#answered && !this.#issse && !this.#iswebsocket);
   }
 
-  close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) => {
+  close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) : Promise<this> => {
     if (closeEvent) {
       this.#eventtarget.dispatchEvent(closeEvent);
     }
@@ -182,22 +187,37 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await this.#prev;
       this.#issse = false;
     }
+
+    return this;
   }
 
   dispatchEvent(event : Event) : boolean | undefined {
     return this.#eventtarget.dispatchEvent(event);
   }
 
-  async send(data: string | Uint8Array | ServerSentEvent) {
+  async send(data: string | Uint8Array | ServerSentEvent) : Promise<this> {
     if (this.#iswebsocket) {
       this.#prev = this.#websocketsend((data instanceof ServerSentEvent) ? data.data : data, this.#prev);
+      await this.#prev;
     }
     else if (this.#issse) {
       this.#prev = this.#ssesend((data instanceof ServerSentEvent) ? data.toString() : data, this.#prev);
+      await this.#prev;
     }
     else {
-
+      console.error("Not upgraded or sustain");
     }
+
+    return this;
+  }
+
+  get cookies(): Cookies {
+    return getCookies(this.request);
+  }
+
+  setCookie(c: Cookie): this {
+    setCookie(this.response, c);
+    return this;
   }
 
 	//HTTP Type Methods
@@ -273,13 +293,39 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this;
   }
 
-  //! NEED REDIRECT METHOD
+  async renderFile(filepath: string): Promise<this>{
+    let ext = mime.getType(filepath) ? extname(filepath) : undefined;
+    if (ext) {
+      try {
+        this.blob(await this.mousse.render(ext, await Deno.readFile(filepath)), "text/html");
+      } catch {
+        console.error("File not found !");
+      }
+    }
+    else
+      console.error("Unkown " + ext + " extension type");
 
-  // ? Render method ??
+    return this;  
+  }
+
+  async render(ext: string, data: any): Promise<this>{
+    if (mime.getType(ext)) {
+      this.blob(await this.mousse.render(ext, data), "text/html");
+    }
+    else
+      console.error("Unkown " + ext + " extension type");
+    return this;
+  }
+
+  async redirect(url: string, code: Status = Status.Found) : Promise<void> {
+    this.response.headers.set("Location", url);
+    this.response.status = code;
+    await this.respond();
+  }
   
   //SSE Methods
   async sustain(): Promise<SSEContext<D>>{
-    if(!this.#issse && !this.#iswebsocket)
+    if(!this.#answered && !this.#issse && !this.#iswebsocket)
       this.#ready = this.#ssesetup();
     return this;
   }
@@ -323,7 +369,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this;
   }
 
-  out(type: string, listener: WebSocketEventListenerObject | WebSocketEventListener | EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) : this {
+  off(type: string, listener: WebSocketEventListenerObject | WebSocketEventListener | EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) : this {
     if (listener) {
       this.#eventtarget.removeEventListener(type, listener as (EventListener | EventListenerObject | null), options);
     }
@@ -336,7 +382,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
 
 	//WS Type Methods
   async upgrade(handler?: ContextHandlerFunction): Promise<WSContext>{
-    if(!this.#issse && !this.#iswebsocket)
+    if(!this.#answered && !this.#issse && !this.#iswebsocket)
       this.#ready = this.#wssetup(handler);
     return this;
   }
@@ -456,8 +502,10 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     }
   }
 
-  async ping(data?: WebSocketMessage) {
+  async ping(data?: WebSocketMessage) : Promise<this> {
     if(this.#iswebsocket)
 		  await this.#websocket?.websocket.ping(data);
-	}
+  
+    return this;
+  }
 }

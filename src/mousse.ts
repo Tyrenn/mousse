@@ -1,4 +1,4 @@
-import { HTTPOptions, HTTPSOptions, Server, serve, serveTLS } from "./ext.ts";
+import { HTTPOptions, HTTPSOptions, Server, serve, serveTLS, mime, extname } from "./ext.ts";
 import { Router } from './router.ts';
 import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext } from './context.ts';
 import { WebSocketPool } from './websocket.ts';
@@ -21,8 +21,8 @@ export class Mousse{
   sses: Map<string, SSEPool> = new Map<string, SSEPool>();
   
   started: boolean = false;
-  //? Thinking of an ERROR HANDLING
   #eventtarget: EventTarget = new EventTarget();
+  #renderers: Map<string, (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>> = new Map<string, (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>>();
 
 	//start: () => Promise<void>;
 
@@ -112,4 +112,32 @@ export class Mousse{
     this.router.sse<T>(path, ...handlers);
     return this;
   }
+
+  renderer(ext: string, renderFunction: (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>) : this {
+    if (!mime.getType(ext)) {
+      console.error("Extension " + ext + " in app.renderer()");
+      return this;
+    }
+    else {
+      this.#renderers.set(ext, renderFunction);
+      return this;
+    }
+  }
+
+  async render(ext : string, data: any): Promise<Uint8Array | Deno.Reader>{
+    let renderer = this.#renderers.get(ext);
+    if (renderer) {
+      return await renderer(data);
+    }
+    else {
+      console.error("No renderer set for " + ext + " data");
+      return new Uint8Array();
+    }
+  }
+
+  on = this.#eventtarget.removeEventListener;
+
+  off = this.#eventtarget.addEventListener;
+
+  dispatchEvent = this.#eventtarget.dispatchEvent;
 };
