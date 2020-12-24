@@ -14,7 +14,7 @@ export interface MousseOptions{
 
 export class Mousse{
 	server: Server;
-	opt: MousseOptions;
+  opt: MousseOptions = { port: 3000 };
 	router = new Router();
 
 	websockets: Map<string, WebSocketPool> = new Map<string, WebSocketPool>();
@@ -23,20 +23,22 @@ export class Mousse{
   started: boolean = false;
   #eventtarget: EventTarget = new EventTarget();
   #renderers: Map<string, (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>> = new Map<string, (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>>();
+  #process?: Promise<void>;
+  
 
-	//start: () => Promise<void>;
-
-	constructor(opt: MousseOptions) {
-		this.opt = opt;
-		if ((typeof opt.certFile === 'string') && (typeof opt.keyFile === 'string')) {
-			this.server = serveTLS(opt as HTTPSOptions);
-		}
-		else {
-			this.server = serve(opt as HTTPOptions);
-		}
+  constructor(opt?: MousseOptions) {
+    if (opt) {
+      this.opt = opt;
+    }
+    if ((typeof this.opt.certFile === 'string') && (typeof this.opt.keyFile === 'string')) {
+      this.server = serveTLS(this.opt as HTTPSOptions);
+    }
+    else {
+      this.server = serve(this.opt as HTTPOptions);
+    }
 	}
 
-  async start() {
+  #start = async (): Promise<void> => {
 		if (!this.started) {
 			this.started = true;
       for await (const req of this.server) {
@@ -45,11 +47,30 @@ export class Mousse{
 			}
 		}
   }
-  
-  async close(): Promise<void> {
+
+  async start(opt? : MousseOptions) {
+    if (opt) {
+      this.opt = opt;
+      if ((typeof this.opt.certFile === 'string') && (typeof this.opt.keyFile === 'string')) {
+        this.server = serveTLS(this.opt as HTTPSOptions);
+      }
+      else {
+        this.server = serve(this.opt as HTTPOptions);
+      }
+    }
+
+    if (this.started) {
+      await this.stop();
+    }
+    this.#process = this.#start();
+  }
+
+  async stop() {
+    this.started = false;
     if (this.server) {
       this.server.close();
     }
+    await this.#process;
   }
 
   static(path?: string, extensions?: string | Array<string>): this{
