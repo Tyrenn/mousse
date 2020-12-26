@@ -3,7 +3,14 @@ import { Mousse } from './mousse.ts';
 import { WebSocketPool, WebSocketIDed, WebSocketEvent, WebSocketEventListener, WebSocketEventListenerObject, WebSocketTextEvent, WebSocketPingEvent, WebSocketPongEvent, WebSocketCloseEvent, WebSocketBinaryEvent } from './websocket.ts';
 import { ServerSentEvent, ServerSentCloseEvent, SSEIDed, SSEPool } from './serversentevent.ts';
 
-export type ContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE" | "WS";
+export type HTTPContextMethod = "DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "POST" | "PUT" | "TRACE";
+export type WSContextMethod = "WS";
+export type SSEContextMethod = "SSE";
+export type ContextMethod = HTTPContextMethod | WSContextMethod | SSEContextMethod;
+
+export function isHTTPContextMethod(obj: string | ContextMethod): obj is HTTPContextMethod {
+	return (obj === "DELETE" || obj === "GET" || obj === "HEAD" || obj === "OPTIONS" || obj === "PATCH" || obj === "POST" || obj === "PUT" || obj === "TRACE");
+}
 
 export interface StreamPool{
   sses: SSEPool;
@@ -14,7 +21,7 @@ export interface ContextHandler<T extends CommonContext = Context>{
 	handle: ContextHandlerFunction<T>;
 }
 
-export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next?: (() => void)) => Promise<void> | void);
+export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next?: (() => void | Promise<void>)) => Promise<void> | void);
 
 export function isHandler<T extends CommonContext>(obj: any): obj is ContextHandler<T> {
 	return typeof obj.handle != 'undefined'; 
@@ -107,7 +114,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
 	urlpcd: string;
   data?: D;
 
-  #answered: boolean = false;
+  answered: boolean = false;
   #eventtarget: EventTarget = new EventTarget();
 
 	//HTTP Type Parameters
@@ -150,11 +157,11 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
   get upgradable() : boolean{
-		return (!this.#answered && !this.#issse && !this.#iswebsocket && acceptable(this.request));
+		return (!this.answered && !this.#issse && !this.#iswebsocket && acceptable(this.request));
   }
 
   get sustainable(): boolean{
-    return (!this.#answered && !this.#issse && !this.#iswebsocket);
+    return (!this.answered && !this.#issse && !this.#iswebsocket && this.request.headers.has("accept") && this.request.headers.get("accept") === "text/event-stream");
   }
 
   close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) : Promise<this> => {
@@ -168,6 +175,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     if (this.#iswebsocket && this.#websocket) {
       if (this.#ready !== true) {
         await this.#ready;
+        this.#ready = true;
       }
       for (let websocketpool of this.mousse.websockets.values()) {
         websocketpool.rm(this.id);
@@ -183,6 +191,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       }
       if (this.#ready !== true) {
         await this.#ready;
+        this.#ready = true;
       }
       await this.#prev;
       this.#issse = false;
@@ -195,7 +204,8 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this.#eventtarget.dispatchEvent(event);
   }
 
-  async send(data: string | Uint8Array | ServerSentEvent) : Promise<this> {
+  async send(data: string | Uint8Array | ServerSentEvent): Promise<this> {
+    console.log(this.#issse)
     if (this.#iswebsocket) {
       this.#prev = this.#websocketsend((data instanceof ServerSentEvent) ? data.data : data, this.#prev);
       await this.#prev;
@@ -205,7 +215,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await this.#prev;
     }
     else {
-      console.error("Not upgraded or sustain");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context not upgraded or sustained" }));
     }
 
     return this;
@@ -223,11 +233,11 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
 	//HTTP Type Methods
   async respond(res?: Response) {
     if (this.#iswebsocket || this.#issse) {
-      console.error("Can't respond, context is pending");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context can't respond, context is pending" }));
       return
     }
-    if (this.#answered) {
-      console.error("Already respond to request");
+    if (this.answered) {
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context has already answered to request" }));
     }
     else {
     	if (res) {
@@ -236,7 +246,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       else {
         await this.request.respond(this.response);
       }
-      this.#answered = true;
+      this.answered = true;
     }
 	}
   
@@ -285,35 +295,35 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   async file(filepath: string): Promise<this> {
     filepath = join(Deno.cwd(), filepath);
     try {
-      this.blob(await Deno.readFile(filepath), mime.getType(filepath));
+      this.blob(await Deno.readFile(filepath), this.mousse.opt.mime?.getType(filepath));
     } catch {
-      console.error("File not found !");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "File not found : " + filepath }));
     }
 
     return this;
   }
 
   async renderFile(filepath: string): Promise<this>{
-    let ext = mime.getType(filepath) ? extname(filepath) : undefined;
+    let ext = this.mousse.opt.mime?.getType(filepath) ? extname(filepath) : undefined;
     if (ext) {
       try {
         this.blob(await this.mousse.render(ext, await Deno.readFile(filepath)), "text/html");
       } catch {
-        console.error("File not found !");
+        this.mousse.dispatchEvent(new ErrorEvent("error", { message: "File not found : " + filepath }));
       }
     }
     else
-      console.error("Unkown " + ext + " extension type");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Unkown " + ext + " extension type in set Mime object" }));
 
     return this;  
   }
 
   async render(ext: string, data: any): Promise<this>{
-    if (mime.getType(ext)) {
+    if (this.mousse.opt.mime?.getType(ext)) {
       this.blob(await this.mousse.render(ext, data), "text/html");
     }
     else
-      console.error("Unkown " + ext + " extension type");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Unkown " + ext + " extension type in set Mime object" }));
     return this;
   }
 
@@ -325,8 +335,12 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   
   //SSE Methods
   async sustain(): Promise<SSEContext<D>>{
-    if(!this.#answered && !this.#issse && !this.#iswebsocket)
+    if (!this.answered && !this.#issse && !this.#iswebsocket) {
       this.#ready = this.#ssesetup();
+      await this.#ready;
+      this.answered = true;
+      this.#ready = true;
+    }
     return this;
   }
 
@@ -337,16 +351,17 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
         await this.request.w.flush();
         this.#issse = true;
         this.#prev = Promise.resolve();
+        this.#eventtarget.addEventListener("close", () => { console.log("AHHHH CLOSE") });
         this.join("");
       } catch (error) {
-        console.error("Failed to keep alive : ", error);
+        this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to keep alive", error : error }));
         this.close(new ServerSentCloseEvent(401, `Failed to keep alive : ${error}`));
       }
   }
 
   #ssesend = async (data: string | Uint8Array, prev: Promise<void>) => {
     if (!this.#issse) {
-      console.error("Context is not SSE");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context is not SSE" }));
       return;
     }
     if (this.#ready !== true) {
@@ -359,7 +374,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await this.request.w.write(payload);
       await this.request.w.flush();
     } catch (error) {
-      console.error("Failed to send data : ", error);
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error : error }));
       this.close(new ServerSentCloseEvent(404, `Failed to send data : ${error}`));
     }
   };
@@ -381,13 +396,40 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
 	//WS Type Methods
-  async upgrade(handler?: ContextHandlerFunction): Promise<WSContext>{
-    if(!this.#answered && !this.#issse && !this.#iswebsocket)
-      this.#ready = this.#wssetup(handler);
+  async upgrade(): Promise<WSContext>{
+    if (!this.answered && !this.#issse && !this.#iswebsocket) {
+      this.#ready = this.#wssetup();
+      await this.#ready;
+      this.answered = true;
+      this.#ready = true;
+    }
     return this;
   }
   
-  #wssetup = async (handler?: ContextHandlerFunction): Promise<void> => {
+  #wsloop = async () => {
+    try {
+    for await (const event of this.websocket as WebSocket) {
+      if (typeof event === "string") {
+        this.#eventtarget.dispatchEvent(new WebSocketTextEvent(event));
+      } else if (event instanceof Uint8Array) {
+        this.#eventtarget.dispatchEvent(new WebSocketBinaryEvent(event));
+      } else if (isWebSocketPingEvent(event)) {
+        this.#eventtarget.dispatchEvent(new WebSocketPingEvent(event[1]));
+      } else if (isWebSocketPongEvent(event)) {
+        this.#eventtarget.dispatchEvent(new WebSocketPongEvent(event[1]));
+      } else {
+        this.close(new WebSocketCloseEvent(event.code, event.reason));
+      }
+    }
+
+    }
+    catch (error) {
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to receive frame", error : error }));
+      this.close(new WebSocketCloseEvent(404, `Failed to receive frame : ${error}`));
+    }
+  }
+
+  #wssetup = async (): Promise<void> => {
     if (this.upgradable) {
       if (!this.#issse) {
         await this.close();
@@ -395,40 +437,16 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
 			const { conn, r: bufReader, w: bufWriter, headers } = this.request;
 			let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err) => { throw(`failed to accept websocket: ${err}`);});
       if (websocket) {
-        
-        this.method = "WS";
         this.#websocket = new WebSocketIDed(websocket, this.id);
         this.#iswebsocket = true;
         this.#prev = Promise.resolve();
 
         this.join("");
-
-        if (handler) {
-          handler(this);
-          try {
-            for await (const event of websocket as WebSocket) {
-              if (typeof event === "string") {
-                this.#eventtarget.dispatchEvent(new WebSocketTextEvent(event));
-              } else if (event instanceof Uint8Array) {
-                this.#eventtarget.dispatchEvent(new WebSocketBinaryEvent(event));
-              } else if (isWebSocketPingEvent(event)) {
-                this.#eventtarget.dispatchEvent(new WebSocketPingEvent(event[1]));
-              } else if (isWebSocketPongEvent(event)) {
-                this.#eventtarget.dispatchEvent(new WebSocketPongEvent(event[1]));
-              } else {
-                this.close(new WebSocketCloseEvent(event.code, event.reason));
-              }
-            }
-          }
-          catch (error) {
-            console.error("Failed to receive frame:", error);
-            this.close(new WebSocketCloseEvent(404, `Failed to receive frame : ${error}`));
-          }
-        }
+        this.#wsloop();
 			}
     }
     else {
-      console.error("Context is not acceptable");
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context is not acceptable" }));
     }
   } 
 
@@ -497,7 +515,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await prev;
       await this.#websocket?.websocket.send(data);
     } catch (error) {
-      console.error("Failed to send data :", error);
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error : error }));
       this.close(new WebSocketCloseEvent(404, `Failed to send data : ${error}`));
     }
   }

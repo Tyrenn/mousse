@@ -1,5 +1,5 @@
 //@ts-ignore
-export type { WSContext, HTTPContext, SSEContext } from './src/context.ts';
+export type { WSContext, HTTPContext, SSEContext, StreamPool, CommonContext, HTTPContextMethod, WSContextMethod, SSEContextMethod, ContextMethod, ContextHandler, ContextHandlerFunction } from './src/context.ts';
 
 //@ts-ignore
 export { Router } from './src/router.ts';

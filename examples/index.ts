@@ -15,9 +15,9 @@ let kindRouter = new Router();
 
 kindRouter.get("/:kind",
     function (context: HTTPContext) {
-        context.respond({
+        context.response = {
             status: 200, body: " Path says : " + context.params.kind
-        });
+        };
     }
 );
 
@@ -32,12 +32,12 @@ let bubbleRouter = new Router();
 bubbleRouter.get("", async (c) => {
   await c.respond({ status: 200, body: "I'm a Mousse bubble !" });
 }); // Handlers can be asynchronous
-mousse.any("/bubble", bubbleRouter); // Bind the router to /bubble routes using any() method which let only http context get through
+mousse.use("/bubble", bubbleRouter);
 
 
 // Create a server sent event route
-mousse.sse("/serversentevent", (c) => {
-  c.send("Welcome on the server sent event route");
+mousse.sse("/serversentevent", (c : SSEContext) => {
+  var interval = setInterval(() => { c.send(`data: Bonjour nous sommes le ${new Date()}\n\n`) }, 1000);
 })
 
 
@@ -61,6 +61,9 @@ mousse.ws("/popping",
 	}
 );
 
+mousse.get("otherwsway", async (c) => {
+
+});
 
 // Both server-sent events and websockets can be obtained through get route
 mousse.get("/otherwsway", async (c: WSContext) => {
@@ -70,10 +73,17 @@ mousse.get("/otherwsway", async (c: WSContext) => {
   })
 });
 
-mousse.get("/othersseway", async (c: SSEContext) => {
+mousse.get("/othersseway", async (c: SSEContext, next) => {
   await c.sustain();
   c.send("Welcome on the other way to deal with server sent event");
-});
+
+  if(next)
+    await next();
+},
+  (c: SSEContext) => {
+    var interval = setInterval(() => { c.send(`data: ${new Date()}\n\n`) }, 1000);
+  }
+);
 
 
 // Start the mousse app

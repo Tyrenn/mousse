@@ -52,7 +52,7 @@ export class Route{
     }
   }
 
-	handle(context : Context){
+	async handle(context : Context){
 
     //Fixing param for handlers
 		let urlpcd : string = context.urlpcd + this.path;
@@ -60,17 +60,17 @@ export class Route{
 		let stack : Array<ContextHandler> = this.handlersStack;
     let idx: number = 0;
     
-		let next = function (){
+		let next = async function (){
 			if(idx < stack.length){
 				//Request infos are reset before dispatching context to same level handlers
 				context.urlpcd = urlpcd;
         context.params = params;
 
-				stack[idx++].handle(context, next);
+				await stack[idx++].handle(context, next);
 			}
 		};
 
 		/* Execute handlers in a middleware fashion way */
-		next();
+		await next();
 	}
 }
