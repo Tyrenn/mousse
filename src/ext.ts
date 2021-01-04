@@ -5,7 +5,7 @@ export { join } from "https://deno.land/std@0.80.0/path/mod.ts";
 
 export { encode } from "https://deno.land/std@0.78.0/encoding/utf8.ts";
 
-export { mime } from "https://github.com/Tyrenn/mimetypes/raw/main/mod.ts";
+export { mime, Mime } from "https://github.com/Tyrenn/mimetypes/raw/main/mod.ts";
 
 export { serve, serveTLS, Status, ServerRequest, setCookie, getCookies } from "https://deno.land/std@0.78.0/http/mod.ts";
 

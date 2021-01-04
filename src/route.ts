@@ -52,25 +52,45 @@ export class Route{
     }
   }
 
-	handle(context : Context){
+	async handle(context : Context){
 
     //Fixing param for handlers
-		let urlpcd : string = context.urlpcd + this.path;
-		let params : Record<string, string> = { ...context.params, ...this.params };
-		let stack : Array<ContextHandler> = this.handlersStack;
-    let idx: number = 0;
-    
-		let next = function (){
+		//let urlpcd : string = context.urlpcd + this.path;
+		//let params : Record<string, string> = { ...context.params, ...this.params };
+		//let stack : Array<ContextHandler> = this.handlersStack;
+    //let idx: number = 0;
+
+    let routecontext = {
+		  urlpcd : context.urlpcd + this.path,
+		  params : { ...context.params, ...this.params },
+		  stack : this.handlersStack,
+      idx : 0,
+      next : true
+    }
+
+    let next = function () {
+      routecontext.next = true;
+      routecontext.idx++;
+    }
+
+    while (routecontext.next && routecontext.idx < routecontext.stack.length) {
+      context.urlpcd = routecontext.urlpcd;
+      context.params = routecontext.params;
+      routecontext.next = false;
+      await routecontext.stack[routecontext.idx].handle(context, next);
+    }
+/*
+		let next = async function (){
 			if(idx < stack.length){
 				//Request infos are reset before dispatching context to same level handlers
 				context.urlpcd = urlpcd;
         context.params = params;
 
-				stack[idx++].handle(context, next);
+				await stack[idx++].handle(context, next);
 			}
-		};
+		};*/
 
 		/* Execute handlers in a middleware fashion way */
-		next();
+		//await next();
 	}
 }

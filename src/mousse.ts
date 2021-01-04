@@ -1,20 +1,26 @@
-import { HTTPOptions, HTTPSOptions, Server, serve, serveTLS, mime, extname } from "./ext.ts";
+import { HTTPOptions, HTTPSOptions, Server, serve, serveTLS, mime, Mime } from "./ext.ts";
 import { Router } from './router.ts';
-import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext } from './context.ts';
+import { Context, ContextMethod, WSContext, HTTPContext , ContextHandlers, CommonContext, SSEContext, HTTPContextMethod } from './context.ts';
 import { WebSocketPool } from './websocket.ts';
 import { SSEPool } from "./serversentevent.ts";
 
 
 export interface MousseOptions{
-	port: number,
+  port?: number,
+  mime?: Mime,
 	hostname?: string,
 	certFile?: string,
-	keyFile?: string,
+  keyFile?: string,
+}
+
+const defaultMousseOptions: MousseOptions = {
+  port: 3000,
+  mime: mime
 }
 
 export class Mousse{
 	server: Server;
-  opt: MousseOptions = { port: 3000 };
+  opt: MousseOptions = defaultMousseOptions;
 	router = new Router();
 
 	websockets: Map<string, WebSocketPool> = new Map<string, WebSocketPool>();
@@ -28,7 +34,7 @@ export class Mousse{
 
   constructor(opt?: MousseOptions) {
     if (opt) {
-      this.opt = opt;
+      this.opt = { ...this.opt, ...opt };
     }
     if ((typeof this.opt.certFile === 'string') && (typeof this.opt.keyFile === 'string')) {
       this.server = serveTLS(this.opt as HTTPSOptions);
@@ -42,15 +48,17 @@ export class Mousse{
 		if (!this.started) {
 			this.started = true;
       for await (const req of this.server) {
-        let c = new Context(this, req)
-				this.router.handle(c);
+        let c = new Context(this, req);
+        await this.router.handle(c);
+        if(!c.answered)
+          c.respond();
 			}
 		}
   }
 
   async start(opt? : MousseOptions) {
     if (opt) {
-      this.opt = opt;
+      this.opt = { ...this.opt, ...opt };
       if ((typeof this.opt.certFile === 'string') && (typeof this.opt.keyFile === 'string')) {
         this.server = serveTLS(this.opt as HTTPSOptions);
       }
@@ -84,7 +92,7 @@ export class Mousse{
 	}
 
 	//For now does a strange job if a router with "/test/bonjour" path given and then a handler for the path "/test/bonjour/bonsoir"
-	add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
+	add<T extends CommonContext = Context>(method : ContextMethod | "SSE" | Array<HTTPContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
 		this.router.add<T>(method, path, ...handlers);
 		return this;
 	}
@@ -135,8 +143,9 @@ export class Mousse{
   }
 
   renderer(ext: string, renderFunction: (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>) : this {
-    if (!mime.getType(ext)) {
-      console.error("Extension " + ext + " in app.renderer()");
+    if (!this.opt.mime?.getType(ext)) {
+            this.dispatchEvent(new ErrorEvent("error", { message: "Extension " + ext + " in app.renderer()" }));
+      console.error();
       return this;
     }
     else {
@@ -151,7 +160,7 @@ export class Mousse{
       return await renderer(data);
     }
     else {
-      console.error("No renderer set for " + ext + " data");
+      this.dispatchEvent(new ErrorEvent("error", { message: "No renderer set for " + ext + " data" }));
       return new Uint8Array();
     }
   }
