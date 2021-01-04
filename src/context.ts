@@ -18,10 +18,10 @@ export interface StreamPool{
 }
 
 export interface ContextHandler<T extends CommonContext = Context>{
-	handle: ContextHandlerFunction<T>;
+	handle: (context: T, next?: (() => void )) => Promise<void>;
 }
 
-export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next?: (() => void | Promise<void>)) => Promise<void> | void);
+export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next?: (() => void )) => Promise<void> | void);
 
 export function isHandler<T extends CommonContext>(obj: any): obj is ContextHandler<T> {
 	return typeof obj.handle != 'undefined'; 
@@ -374,6 +374,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await this.request.w.write(payload);
       await this.request.w.flush();
     } catch (error) {
+      console.log(this.mousse);
       this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error : error }));
       this.close(new ServerSentCloseEvent(404, `Failed to send data : ${error}`));
     }

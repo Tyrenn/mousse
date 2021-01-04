@@ -11,7 +11,7 @@ const SSEFirstHandler = {
       c.method = "SSE";
     }
     else{
-      if(next) await next();
+      if(next) next();
     } 
   }
 };
@@ -23,7 +23,7 @@ const WSFirstHandler =  {
       c.method = "WS";
     }
     else {
-      if (next) await next();
+      if (next) next();
     }
   }
 };
@@ -42,23 +42,21 @@ export class Router implements ContextHandler{
     SSE:        new Array<Route>(),
 	}
 
-  #raisers: Array<Route> = new Array<Route>();
-
   #middlewares: Array<Route> = new Array<Route>();
 
 	private makeHandler(fn: ContextHandlerFunction<CommonContext>): ContextHandler<CommonContext>{
 		//Has no next parameter
     if (fn.length < 2) {
-			return {handle(context : CommonContext, next? : () => Promise<void> | void){
-				fn.apply(this, [context])
+			return {handle : async (context : CommonContext, next? : () => void) => {
+				await fn.apply(this, [context])
 				if (next)
 					next();
 			}}
     }
     //Has a next parameter
 		else {
-			return {handle(context:  CommonContext, next? : () => Promise<void> | void){
-				fn.apply(this, [context, next]);
+			return {handle : async (context:  CommonContext, next? : () => void) => {
+				await fn.apply(this, [context, next]);
 			}}  
 		}
   };
@@ -74,27 +72,29 @@ export class Router implements ContextHandler{
     let handler: ContextHandler<HTTPContext>;
     if (extensions) {
       handler = {
-        async handle(context: HTTPContext, next?: () => Promise<void> | void) {
+        async handle(context: HTTPContext, next?: () => void) {
           if (extensions === extname(context.request.url) || extensions.includes(extname(context.request.url))) {
             //console.log(context.request.url);
             await context.file(context.request.url);
           }
           else {
             if (next)
-              await next();
+              next();
           }
         }
       }
     }
     else {
       handler = {
-        async handle(context: HTTPContext, next?: () => Promise<void> | void) {
-            await context.file(context.request.url);
+        async handle(context: HTTPContext, next?: () => void) {
+          await context.file(context.request.url);
+          if (next)
+            next();
         }
       }
     }
 
-    this.addHTTPInFirst<HTTPContext>("GET", path, handler);
+    this.insert<HTTPContext>("GET", 0, path, handler);
 
     return this;
   }
@@ -114,14 +114,15 @@ export class Router implements ContextHandler{
 		}
     
     for (var handler of handlers) {
+      /*
       if (handler instanceof Router) {
         for (var route of handler.#routes["WS"]) {
-          this.addHTTPInFirst("GET", path + "/" + route.path, WSFirstHandler);
+          this.insert<T>("GET", 0, path + "/" + route.path, WSFirstHandler);
         }
         for (var route of handler.#routes["SSE"]) {
-          this.addHTTPInFirst("GET", path + "/" + route.path, SSEFirstHandler);
+          this.insert<T>("GET", 0, path + "/" + route.path, SSEFirstHandler);
         }
-      }
+      }*/
 
 			//Check if Handler or HandlerFunction
       if (isHandler<T>(handler)) {
@@ -134,40 +135,69 @@ export class Router implements ContextHandler{
 		}
     
     return this;
-	}
-
-  private addHTTPInFirst<T extends CommonContext = Context>(method: HTTPContextMethod | Array<HTTPContextMethod>, path?: string, ...handlers: ContextHandlers<T>): this{
-    if (!path)
-        path = "";
-
-    if (Array.isArray(method)) {
-      for (let m of method) {
-        this.addHTTPInFirst<T>(m, path, ...handlers);
-      }
-      return this;
-    }
+  }
   
+/*
+  private addRaiser<T extends CommonContext = Context>(path?: string, ...handlers: ContextHandlers<T>): this {
+    if (!path)
+      path = "";
     
-    let index : number = this.#routes[method].findIndex(route => route.path === path);
+    let index : number = this.#raisers.findIndex(route => route.path === path);
     if (index < 0) {
-      (this.#routes[method]).push(new Route(path));
-      index = (this.#routes[method]).length - 1;
+      (this.#raisers).push(new Route(path));
+      index = (this.#raisers).length - 1;
     }
 
     for (var handler of handlers) {
       //Check if Handler or HandlerFunction
       if (isHandler<T>(handler)) {
-        (this.#routes[method])[index].addHandler(handler as ContextHandler<CommonContext>, 0);
+        (this.#raisers)[index].addHandler(handler as ContextHandler<CommonContext>, 0);
       }
       else {
-        (this.#routes[method])[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>), 0);
+        (this.#raisers)[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>), 0);
+      }
+    }
+
+    return this;
+  }
+*/
+  
+  insert<T extends CommonContext = Context>(method: ContextMethod | Array<ContextMethod>, index: number, path?: string, ...handlers: ContextHandlers<T>): this{
+    if (!path)
+        path = "";
+
+    if (Array.isArray(method)) {
+      for (let m of method) {
+        this.insert<T>(m, index, path, ...handlers);
+      }
+      return this;
+    }
+  
+    let routeIndex : number = this.#routes[method].findIndex(route => route.path === path);
+    if (routeIndex < 0) {
+      if (method === "SSE") {
+        this.insert<T>("GET", 0, path, SSEFirstHandler);
+      }
+      if (method === "WS") {
+        this.insert<T>("GET", 0, path, WSFirstHandler);
+      } 
+      (this.#routes[method]).push(new Route(path));
+      routeIndex = (this.#routes[method]).length - 1;
+    }
+
+    for (var handler of handlers) {
+      if (isHandler<T>(handler)) {
+        (this.#routes[method])[routeIndex].addHandler(handler as ContextHandler<CommonContext>, index);
+      }
+      else {
+        (this.#routes[method])[routeIndex].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>), index);
       }
     }
 
     return this;
   }
 
-  add<T extends CommonContext = Context>(method : ContextMethod | Array<HTTPContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
+  add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
     if (!path)
       path = "";
 
@@ -181,11 +211,11 @@ export class Router implements ContextHandler{
     let index : number = this.#routes[method].findIndex(route => route.path === path);
     if (index < 0) { // Route doesn't exists, push a new one
       //If method is SSE or WS, adding a converter handler on the GET route as first handler
-      if(method === "SSE") {
-        this.addHTTPInFirst<T>("GET", path, SSEFirstHandler);
+      if (method === "SSE") {
+        this.insert<T>("GET", 0, path, SSEFirstHandler);
       }
-      if(method === "WS") {
-        this.addHTTPInFirst<T>("GET", path, WSFirstHandler);
+      if (method === "WS") {
+        this.insert<T>("GET", 0, path, WSFirstHandler);
       } 
       (this.#routes[method]).push(new Route(path)); 
       index = (this.#routes[method]).length - 1;
@@ -240,47 +270,41 @@ export class Router implements ContextHandler{
 
   /**
    * Function called to handle a context. Each router is in itself an handler object.
-   * First process HTTPContext because GET Context upgradable or sustainable will be upgraded through a first specific handler
-   * Then process WS and SSE Contexts
+   * First pocess middlewares
+   * Then process context if method is GET in order to raise context to WS or SSE if possible 
+   * Then process all other method context 
    * @param context Context object wrapping request, response and multiple utility functions
    * @param next Handler Control Flow Function which is called if available to pass the Context through
    */
-  //! A REVOIR LES AWAIT ASYNC
-	async handle(context: Context, next?: () => void | Promise<void>) : Promise<void> {
-    console.log(this.#routes);
+	async handle(context: Context, next?: () => void) : Promise<void> {
+    //console.log(this.#routes);
 
     let remainingUrl: string = context.url.replace(context.urlpcd, "");
 
-    if (context.method === "GET") {
-      for (var route of this.#raisers) {
-        if (route.match(remainingUrl)) {
-          await route.handle(context);
-        }
-      }
-    }
-
-    console.log("WAAAHT");
-    for (var route of this.#routes[context.method]) {
-      if (route.match(remainingUrl)) {
-        await route.handle(context);
-      }
-    }
-/*
-    if (!isHTTPContextMethod(context.method)) {
-      for (var route of this.#routes[context.method]) {
-        if (route.match(remainingUrl)) {
-          await route.handle(context);
-        }
-      }
-    }
-*/
     for (let route of this.#middlewares) {
       if (route.match(remainingUrl)) {
         await route.handle(context);
       }
     }
 
+    if (context.method === "GET") {
+      for (var route of this.#routes[context.method]) {
+        if (route.match(remainingUrl)) {
+          await route.handle(context);
+          break;
+        }
+      }
+    }
+
+    if (context.method != "GET") {
+      for (var route of this.#routes[context.method]) {
+        if (route.match(remainingUrl)) {
+          await route.handle(context);
+        }
+      }
+    }
+
 		if(next)
-			await next();
+			next();
 	}
 }
