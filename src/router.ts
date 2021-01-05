@@ -1,4 +1,4 @@
-import { isHTTPContextMethod, Context, SSEContext, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, HTTPContextMethod, isHandler } from "./context.ts";
+import { isHTTPContextMethod, Context, SSEContext, WSContext, CommonContext, HTTPContext, ContextHandler, ContextHandlerFunction, ContextHandlers, ContextMethod, HTTPContextMethod, isHandler, isHandlerFunctionNoNext } from "./context.ts";
 import { Route } from "./route.ts"
 //@ts-ignore
 import { extname, mime, MimeExtensions } from "./ext.ts";
@@ -6,7 +6,6 @@ import { extname, mime, MimeExtensions } from "./ext.ts";
 const SSEFirstHandler = {
   handle: async (c: CommonContext, next?: (() => void | Promise<void>)) => {
     if (c.sustainable) {
-      console.log("ICI");
       await c.sustain();
       c.method = "SSE";
     }
@@ -46,50 +45,46 @@ export class Router implements ContextHandler{
 
 	private makeHandler(fn: ContextHandlerFunction<CommonContext>): ContextHandler<CommonContext>{
 		//Has no next parameter
-    if (fn.length < 2) {
-			return {handle : async (context : CommonContext, next? : () => void) => {
+    if (isHandlerFunctionNoNext(fn)) {
+			return {handle : async (context : CommonContext, next : () => void | Promise<void>) => {
 				await fn.apply(this, [context])
 				if (next)
-					next();
+					await next();
 			}}
     }
     //Has a next parameter
 		else {
-			return {handle : async (context:  CommonContext, next? : () => void) => {
+			return {handle : async (context:  CommonContext, next : () => void | Promise<void>) => {
 				await fn.apply(this, [context, next]);
 			}}  
 		}
   };
   
   /**
-   * 
+   * Register a particular handler that will serve any extensions type file at path if requested
    * @param path 
    * @param extensions 
    */
-  
-  //! BETTER WAY TO UPDATE THE REQUEST OR SERVE FILE IN STATIC ?
   static(path?: string, extensions?: string | Array<string>): this{    
     let handler: ContextHandler<HTTPContext>;
     if (extensions) {
       handler = {
-        async handle(context: HTTPContext, next?: () => void) {
+        async handle(context: HTTPContext, next: () => void | Promise<void>) {
           if (extensions === extname(context.request.url) || extensions.includes(extname(context.request.url))) {
             //console.log(context.request.url);
             await context.file(context.request.url);
           }
           else {
-            if (next)
-              next();
+            await next();
           }
         }
       }
     }
     else {
       handler = {
-        async handle(context: HTTPContext, next?: () => void) {
+        async handle(context: HTTPContext, next: () => void | Promise<void>) {
           await context.file(context.request.url);
-          if (next)
-            next();
+          await next();
         }
       }
     }
@@ -100,8 +95,8 @@ export class Router implements ContextHandler{
   }
 
   /**
-   * Register handlers functions or objects in middlewares stack to send Context to right after route handling.
-   * If a handler is a router, a first specific handler is register in GET route in top of the stack.
+   * Register handlers functions or objects in middlewares stack to send Context to.
+   * If a handler is a router, a first specific handler is register in GET route in top of the handler stack.
    * @param path The path you want the handler to match, default is empty string so every Context will go through the handlers
    * @param handlers As many handler function or handler object you want
    */
@@ -114,16 +109,6 @@ export class Router implements ContextHandler{
 		}
     
     for (var handler of handlers) {
-      /*
-      if (handler instanceof Router) {
-        for (var route of handler.#routes["WS"]) {
-          this.insert<T>("GET", 0, path + "/" + route.path, WSFirstHandler);
-        }
-        for (var route of handler.#routes["SSE"]) {
-          this.insert<T>("GET", 0, path + "/" + route.path, SSEFirstHandler);
-        }
-      }*/
-
 			//Check if Handler or HandlerFunction
       if (isHandler<T>(handler)) {
 				this.#middlewares.push(new Route(path, handler as ContextHandler<CommonContext>));
@@ -137,31 +122,13 @@ export class Router implements ContextHandler{
     return this;
   }
   
-/*
-  private addRaiser<T extends CommonContext = Context>(path?: string, ...handlers: ContextHandlers<T>): this {
-    if (!path)
-      path = "";
-    
-    let index : number = this.#raisers.findIndex(route => route.path === path);
-    if (index < 0) {
-      (this.#raisers).push(new Route(path));
-      index = (this.#raisers).length - 1;
-    }
-
-    for (var handler of handlers) {
-      //Check if Handler or HandlerFunction
-      if (isHandler<T>(handler)) {
-        (this.#raisers)[index].addHandler(handler as ContextHandler<CommonContext>, 0);
-      }
-      else {
-        (this.#raisers)[index].addHandler(this.makeHandler(handler as ContextHandlerFunction<CommonContext>), 0);
-      }
-    }
-
-    return this;
-  }
-*/
-  
+  /**
+   * insert handlers to the route stack at index, matching the specified path and request method
+   * @param method Type of request method the route is supposed to handle
+   * @param path Request path the route is supposed to match
+   * @param index Index in stack at which handlers will be inserted
+   * @param handlers Context handlers
+   */
   insert<T extends CommonContext = Context>(method: ContextMethod | Array<ContextMethod>, index: number, path?: string, ...handlers: ContextHandlers<T>): this{
     if (!path)
         path = "";
@@ -197,6 +164,12 @@ export class Router implements ContextHandler{
     return this;
   }
 
+  /**
+   * Add handlers to the route stack, matching the specified path and request method
+   * @param method Type of request method the route is supposed to handle
+   * @param path Request path the route is supposed to match
+   * @param handlers Context handlers
+   */
   add<T extends CommonContext = Context>(method : ContextMethod | Array<ContextMethod>, path? : string, ...handlers : ContextHandlers<T>) : this {
     if (!path)
       path = "";
@@ -276,8 +249,7 @@ export class Router implements ContextHandler{
    * @param context Context object wrapping request, response and multiple utility functions
    * @param next Handler Control Flow Function which is called if available to pass the Context through
    */
-	async handle(context: Context, next?: () => void) : Promise<void> {
-    //console.log(this.#routes);
+	async handle(context: Context, next: () => Promise<void> | void) : Promise<void> {
 
     let remainingUrl: string = context.url.replace(context.urlpcd, "");
 
@@ -303,8 +275,7 @@ export class Router implements ContextHandler{
         }
       }
     }
-
-		if(next)
-			next();
+		
+    await next();
 	}
 }

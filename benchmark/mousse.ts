@@ -7,13 +7,15 @@ import { Mousse } from "../mod.ts";
 
 const mousse = new Mousse({port : 8080});
 
-mousse.any("/", async (c) => c.string(c.request.url).respond());
+mousse.any("/", (c) => {
+  c.string(c.request.url).respond();
+});
 
 mousse.start();
 
 bench({
   name: "simple mousse app",
-  runs: 5000000,
+  runs: 80,
   async func(b : any): Promise<void> {
     b.start();
     const conns = [];
@@ -33,5 +35,5 @@ bench({
 runBenchmarks().then((results: BenchmarkRunResult) => {
     console.log(results);
   }).finally(() => {
-  mousse.close();
+  mousse.stop();
 });

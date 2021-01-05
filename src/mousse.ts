@@ -42,6 +42,7 @@ export class Mousse{
     else {
       this.server = serve(this.opt as HTTPOptions);
     }
+    this.#eventtarget = new EventTarget();
 	}
 
   #start = async (): Promise<void> => {
@@ -49,9 +50,10 @@ export class Mousse{
 			this.started = true;
       for await (const req of this.server) {
         let c = new Context(this, req);
-        await this.router.handle(c);
-        if(!c.answered)
-          c.respond();
+        this.router.handle(c, () => {
+          if(!c.answered)
+            c.respond();
+        });
 			}
 		}
   }
@@ -128,24 +130,23 @@ export class Mousse{
 		this.router.put<T>(path, ...handlers);
 		return this;
 	}
-	trace<T extends HTTPContext = HTTPContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+	trace<T extends HTTPContext<any> = HTTPContext<any>>(path?: string, ...handlers: ContextHandlers<T>): this {
 		this.router.trace<T>(path, ...handlers);
 		return this;
 	}
-	ws<T extends WSContext = WSContext>(path : string, ...handlers : ContextHandlers<T>) : this{
+	ws<T extends WSContext<any> = WSContext<any>>(path : string, ...handlers : ContextHandlers<T>) : this{
 		this.router.ws<T>(path, ...handlers);
 		return this;
   }
   
-  sse<T extends SSEContext = SSEContext>(path?: string, ...handlers: ContextHandlers<T>): this {
+  sse<T extends SSEContext<any> = SSEContext<any>>(path?: string, ...handlers: ContextHandlers<T>): this {
     this.router.sse<T>(path, ...handlers);
     return this;
   }
 
   renderer(ext: string, renderFunction: (...obj: any) => Uint8Array | Deno.Reader | Promise<Uint8Array | Deno.Reader>) : this {
     if (!this.opt.mime?.getType(ext)) {
-            this.dispatchEvent(new ErrorEvent("error", { message: "Extension " + ext + " in app.renderer()" }));
-      console.error();
+      this.dispatchEvent(new ErrorEvent("error", { message: "Extension " + ext + " in app.renderer()" }));
       return this;
     }
     else {
@@ -165,9 +166,15 @@ export class Mousse{
     }
   }
 
-  on = this.#eventtarget.removeEventListener;
+  off(type: string, callback: EventListenerOrEventListenerObject | null, options?: EventListenerOptions | boolean ): void{
+    this.#eventtarget.removeEventListener(type, callback, options);
+  }
 
-  off = this.#eventtarget.addEventListener;
+  on(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void{
+    this.#eventtarget.addEventListener(type, listener, options);
+  }
 
-  dispatchEvent = this.#eventtarget.dispatchEvent;
+  dispatchEvent(event: Event): boolean {
+    return this.#eventtarget.dispatchEvent(event);
+  }
 };

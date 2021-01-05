@@ -14,11 +14,20 @@ mousse.static("/examples/res", ["svg"]);
 let kindRouter = new Router();
 
 kindRouter.get("/:kind",
-    function (context: HTTPContext) {
+  function (context: HTTPContext) {
+    console.log("In first handler !");
         context.response = {
             status: 200, body: " Path says : " + context.params.kind
         };
-    }
+  },
+  (context, next) => {
+    console.log("In second handler !");
+    
+    next();
+  },
+  (context) => {
+    console.log("In third handler because next is called !");
+  }
 );
 
 kindRouter.get("/soap", (c) => {
@@ -29,8 +38,8 @@ mousse.use("/kind", kindRouter);// Bind the router using use() method which will
 
 // Create another router
 let bubbleRouter = new Router();
-bubbleRouter.get("", async (c) => {
-  await c.respond({ status: 200, body: "I'm a Mousse bubble !" });
+bubbleRouter.get("", (c) => {
+  c.response = { status: 200, body: "I'm a Mousse bubble !" };
 }); // Handlers can be asynchronous
 mousse.use("/bubble", bubbleRouter);
 
@@ -43,7 +52,7 @@ mousse.sse("/serversentevent", (c : SSEContext) => {
 
 // Using ws for an internal websocket handling
 mousse.ws("/popping",
-  async (c: WSContext) => {
+  async (c) => {
     c.on("text", (event : WebSocketTextEvent) => {
       console.log("It says :", event.data);
     });
@@ -77,14 +86,12 @@ mousse.get("/othersseway", async (c: SSEContext, next) => {
   await c.sustain();
   c.send("Welcome on the other way to deal with server sent event");
 
-  if(next)
-    await next();
+  next();
 },
   (c: SSEContext) => {
     var interval = setInterval(() => { c.send(`data: ${new Date()}\n\n`) }, 1000);
   }
 );
-
 
 // Start the mousse app
 mousse.start();

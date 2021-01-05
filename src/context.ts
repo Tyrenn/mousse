@@ -18,13 +18,19 @@ export interface StreamPool{
 }
 
 export interface ContextHandler<T extends CommonContext = Context>{
-	handle: (context: T, next?: (() => void )) => Promise<void>;
+	handle: (context: T, next: (() => void | Promise<void> )) => Promise<void>;
 }
 
-export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next?: (() => void )) => Promise<void> | void);
+export type ContextHandlerFunctionNoNext<T extends CommonContext = Context> = ((context: T) => Promise<void> | void);
+
+export type ContextHandlerFunction<T extends CommonContext = Context> = ((context: T, next: (() => void | Promise<void> )) => Promise<void> | void);
+
+export function isHandlerFunctionNoNext<T extends CommonContext>(obj: Function): obj is ContextHandlerFunctionNoNext<T>{
+  return obj.length < 2;
+}
 
 export function isHandler<T extends CommonContext>(obj: any): obj is ContextHandler<T> {
-	return typeof obj.handle != 'undefined'; 
+	return (typeof obj.handle != 'undefined') && obj.handle.length == 2; 
 }
 
 export type ContextHandlers<T extends CommonContext = Context> = Array<ContextHandler<T> | ContextHandlerFunction<T>>;
@@ -81,7 +87,6 @@ export interface WSContext<D = any> extends CommonContext<D>{
 * HTTP Context
 * Give the possibility to respond, send mime file and built http response
 */
-
 export interface HTTPContext<D = any> extends CommonContext<D>{
   response?: Response;
 
@@ -105,48 +110,48 @@ export interface HTTPContext<D = any> extends CommonContext<D>{
  */
 
 export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContext<D>, CommonContext<D> {
-	mousse: Mousse;
-	id: string;
-	request: ServerRequest;
-	method: ContextMethod;
-	params: Record<string, string>;
-	url: string;
-	urlpcd: string;
+  mousse: Mousse;
+  id: string;
+  request: ServerRequest;
+  method: ContextMethod;
+  params: Record<string, string>;
+  url: string;
+  urlpcd: string;
   data?: D;
 
   answered: boolean = false;
   #eventtarget: EventTarget = new EventTarget();
 
-	//HTTP Type Parameters
+  //HTTP Type Parameters
   response: Response & { headers: Headers } = { headers: new Headers() };
 
   //SSE Type Parameters
-  #issse : boolean = false;
+  #issse: boolean = false;
 
-	//WS Type Parameters
+  //WS Type Parameters
   #iswebsocket: boolean = false;
-	#websocket?: WebSocketIDed;
+  #websocket?: WebSocketIDed;
 
   //SSE & WS Type Parameters
   #prev = Promise.resolve();
-  #ready : Promise<void> | true = true;
+  #ready: Promise<void> | true = true;
   
 
-	constructor(mousse: Mousse, req: ServerRequest) {
-		this.mousse = mousse;
-		this.request = req;
-		this.url = req.url;
-		if (this.url.length > 1) {
-			this.url = this.url.replace(/\/$/, '');
-		}
-		this.method = req.method as ContextMethod;
-		this.params = {};
-				this.urlpcd = "";
-				this.id = v4.generate();
-	}
+  constructor(mousse: Mousse, req: ServerRequest) {
+    this.mousse = mousse;
+    this.request = req;
+    this.url = req.url;
+    if (this.url.length > 1) {
+      this.url = this.url.replace(/\/$/, '');
+    }
+    this.method = req.method as ContextMethod;
+    this.params = {};
+    this.urlpcd = "";
+    this.id = v4.generate();
+  }
 	
-	//Mutual methods
-	in(roomname: string): StreamPool{    
+  //Mutual methods
+  in(roomname: string): StreamPool {
     let websocketpool = this.mousse.websockets.get(roomname);
     let ssepool = this.mousse.sses.get(roomname);
     
@@ -156,56 +161,29 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return { websockets: websockets, sses: sses };
   }
 
-  get upgradable() : boolean{
-		return (!this.answered && !this.#issse && !this.#iswebsocket && acceptable(this.request));
+  get upgradable(): boolean {
+    return (!this.answered && !this.#issse && !this.#iswebsocket && acceptable(this.request));
   }
 
-  get sustainable(): boolean{
+  get sustainable(): boolean {
     return (!this.answered && !this.#issse && !this.#iswebsocket && this.request.headers.has("accept") && this.request.headers.get("accept") === "text/event-stream");
   }
 
-  close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent) : Promise<this> => {
+  close = async (closeEvent?: WebSocketCloseEvent | ServerSentCloseEvent): Promise<this> => {
     if (closeEvent) {
       this.#eventtarget.dispatchEvent(closeEvent);
     }
     else {
-      this.#eventtarget.dispatchEvent(new Event("close", {cancelable : false}));
+      this.#eventtarget.dispatchEvent(new Event("close", { cancelable: false }));
     }
-      
-    if (this.#iswebsocket && this.#websocket) {
-      if (this.#ready !== true) {
-        await this.#ready;
-        this.#ready = true;
-      }
-      for (let websocketpool of this.mousse.websockets.values()) {
-        websocketpool.rm(this.id);
-      }
-      if(!this.#websocket.websocket.isClosed)
-        await this.#websocket.websocket.close(1000).catch(console.error);
-      this.#iswebsocket = false;
-      this.#websocket = undefined;
-    }
-    if (this.#issse) {
-      for (let ssepool of this.mousse.sses.values()) {
-        ssepool.rm(this.id);
-      }
-      if (this.#ready !== true) {
-        await this.#ready;
-        this.#ready = true;
-      }
-      await this.#prev;
-      this.#issse = false;
-    }
-
     return this;
   }
 
-  dispatchEvent(event : Event) : boolean | undefined {
+  dispatchEvent(event: Event): boolean {
     return this.#eventtarget.dispatchEvent(event);
   }
 
   async send(data: string | Uint8Array | ServerSentEvent): Promise<this> {
-    console.log(this.#issse)
     if (this.#iswebsocket) {
       this.#prev = this.#websocketsend((data instanceof ServerSentEvent) ? data.data : data, this.#prev);
       await this.#prev;
@@ -230,7 +208,23 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this;
   }
 
-	//HTTP Type Methods
+  on<T extends Event = Event>(type: string, listener: (ev: T) => void, options?: boolean | AddEventListenerOptions | undefined): this {
+    this.#eventtarget.addEventListener(type, (event) => { listener(event as T); }, options);
+    return this;
+  }
+
+  off(type: string, listener: WebSocketEventListenerObject | WebSocketEventListener | EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined): this {
+    if (listener) {
+      this.#eventtarget.removeEventListener(type, listener as (EventListener | EventListenerObject | null), options);
+    }
+    else {
+      this.#eventtarget.removeEventListener(type, (...any: any[]): any => { }, options);
+    }
+
+    return this;
+  }
+
+  //HTTP Type Methods
   async respond(res?: Response) {
     if (this.#iswebsocket || this.#issse) {
       this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context can't respond, context is pending" }));
@@ -240,7 +234,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context has already answered to request" }));
     }
     else {
-    	if (res) {
+      if (res) {
         await this.request.respond(res);
       }
       else {
@@ -248,7 +242,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       }
       this.answered = true;
     }
-	}
+  }
   
   string(data: string, code: Status = Status.OK): this {
     if (!this.#issse && !this.#iswebsocket) {
@@ -303,7 +297,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this;
   }
 
-  async renderFile(filepath: string): Promise<this>{
+  async renderFile(filepath: string): Promise<this> {
     let ext = this.mousse.opt.mime?.getType(filepath) ? extname(filepath) : undefined;
     if (ext) {
       try {
@@ -315,10 +309,10 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     else
       this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Unkown " + ext + " extension type in set Mime object" }));
 
-    return this;  
+    return this;
   }
 
-  async render(ext: string, data: any): Promise<this>{
+  async render(ext: string, data: any): Promise<this> {
     if (this.mousse.opt.mime?.getType(ext)) {
       this.blob(await this.mousse.render(ext, data), "text/html");
     }
@@ -327,14 +321,14 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
     return this;
   }
 
-  async redirect(url: string, code: Status = Status.Found) : Promise<void> {
+  async redirect(url: string, code: Status = Status.Found): Promise<void> {
     this.response.headers.set("Location", url);
     this.response.status = code;
     await this.respond();
   }
   
   //SSE Methods
-  async sustain(): Promise<SSEContext<D>>{
+  async sustain(): Promise<SSEContext<D>> {
     if (!this.answered && !this.#issse && !this.#iswebsocket) {
       this.#ready = this.#ssesetup();
       await this.#ready;
@@ -345,18 +339,30 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   }
 
   #ssesetup = async (): Promise<void> => {
-      let headers = 'HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\nContent-Type: text/event-stream\r\n\r\n';
-      try {
-        await this.request.w.write(encode(headers));
-        await this.request.w.flush();
-        this.#issse = true;
-        this.#prev = Promise.resolve();
-        this.#eventtarget.addEventListener("close", () => { console.log("AHHHH CLOSE") });
-        this.join("");
-      } catch (error) {
-        this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to keep alive", error : error }));
-        this.close(new ServerSentCloseEvent(401, `Failed to keep alive : ${error}`));
-      }
+    let headers = 'HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nCache-Control: no-cache\r\nContent-Type: text/event-stream\r\n\r\n';
+    try {
+      await this.request.w.write(encode(headers));
+      await this.request.w.flush();
+      this.#issse = true;
+      this.#prev = Promise.resolve();
+
+      this.#eventtarget.addEventListener("close", async () => {
+        for (let ssepool of this.mousse.sses.values()) {
+          ssepool.rm(this.id);
+        }
+        if (this.#ready !== true) {
+          await this.#ready;
+          this.#ready = true;
+        }
+        await this.#prev;
+        this.#issse = false;
+      });
+
+      this.join("");
+    } catch (error) {
+      this.close(new ServerSentCloseEvent(401, `Failed to keep alive : ${error}`));
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to keep alive", error: error }));
+    }
   }
 
   #ssesend = async (data: string | Uint8Array, prev: Promise<void>) => {
@@ -374,30 +380,13 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await this.request.w.write(payload);
       await this.request.w.flush();
     } catch (error) {
-      console.log(this.mousse);
-      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error : error }));
       this.close(new ServerSentCloseEvent(404, `Failed to send data : ${error}`));
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error: error }));
     }
   };
-	
-  on<T extends Event = Event>(type: string, listener: (ev : T) => void , options?: boolean | AddEventListenerOptions | undefined) : this{
-    this.#eventtarget.addEventListener(type, (event) => { listener(event as T);}, options);
-    return this;
-  }
 
-  off(type: string, listener: WebSocketEventListenerObject | WebSocketEventListener | EventListener | EventListenerObject | null, options?: boolean | AddEventListenerOptions | undefined) : this {
-    if (listener) {
-      this.#eventtarget.removeEventListener(type, listener as (EventListener | EventListenerObject | null), options);
-    }
-    else {
-      this.#eventtarget.removeEventListener(type, (...any: any[]): any => { }, options);
-    }
-
-    return this;
-  }
-
-	//WS Type Methods
-  async upgrade(): Promise<WSContext>{
+  //WS Type Methods
+  async upgrade(): Promise<WSContext> {
     if (!this.answered && !this.#issse && !this.#iswebsocket) {
       this.#ready = this.#wssetup();
       await this.#ready;
@@ -409,24 +398,24 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
   
   #wsloop = async () => {
     try {
-    for await (const event of this.websocket as WebSocket) {
-      if (typeof event === "string") {
-        this.#eventtarget.dispatchEvent(new WebSocketTextEvent(event));
-      } else if (event instanceof Uint8Array) {
-        this.#eventtarget.dispatchEvent(new WebSocketBinaryEvent(event));
-      } else if (isWebSocketPingEvent(event)) {
-        this.#eventtarget.dispatchEvent(new WebSocketPingEvent(event[1]));
-      } else if (isWebSocketPongEvent(event)) {
-        this.#eventtarget.dispatchEvent(new WebSocketPongEvent(event[1]));
-      } else {
-        this.close(new WebSocketCloseEvent(event.code, event.reason));
+      for await (const event of this.websocket as WebSocket) {
+        if (typeof event === "string") {
+          this.#eventtarget.dispatchEvent(new WebSocketTextEvent(event));
+        } else if (event instanceof Uint8Array) {
+          this.#eventtarget.dispatchEvent(new WebSocketBinaryEvent(event));
+        } else if (isWebSocketPingEvent(event)) {
+          this.#eventtarget.dispatchEvent(new WebSocketPingEvent(event[1]));
+        } else if (isWebSocketPongEvent(event)) {
+          this.#eventtarget.dispatchEvent(new WebSocketPongEvent(event[1]));
+        } else {
+          this.close(new WebSocketCloseEvent(event.code, event.reason));
+        }
       }
-    }
 
     }
     catch (error) {
-      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to receive frame", error : error }));
       this.close(new WebSocketCloseEvent(404, `Failed to receive frame : ${error}`));
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to receive frame", error: error }));
     }
   }
 
@@ -435,74 +424,35 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       if (!this.#issse) {
         await this.close();
       }
-			const { conn, r: bufReader, w: bufWriter, headers } = this.request;
-			let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err) => { throw(`failed to accept websocket: ${err}`);});
+      const { conn, r: bufReader, w: bufWriter, headers } = this.request;
+      let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err) => { throw (`failed to accept websocket: ${err}`); });
       if (websocket) {
         this.#websocket = new WebSocketIDed(websocket, this.id);
         this.#iswebsocket = true;
         this.#prev = Promise.resolve();
 
+        this.on("close", async () => {
+          if (this.#ready !== true) {
+            await this.#ready;
+            this.#ready = true;
+          }
+          for (let websocketpool of this.mousse.websockets.values()) {
+            websocketpool.rm(this.id);
+          }
+          if (this.#websocket && !this.#websocket.websocket.isClosed)
+            await this.#websocket.websocket.close(1000).catch(console.error);
+          this.#iswebsocket = false;
+          this.#websocket = undefined;
+        })
+
         this.join("");
         this.#wsloop();
-			}
+      }
     }
     else {
       this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Context is not acceptable" }));
     }
-  } 
-
-  get websocket(): WebSocket | undefined{
-    if (this.#iswebsocket) {
-      return this.#websocket?.websocket;
-    }
-    else {
-      return undefined;
-    }
-	}
-
-	join(roomname: string): this{
-		if (this.#iswebsocket && this.#websocket) {
-			if (this.mousse.websockets.get(roomname)) {
-				this.mousse.websockets.get(roomname)?.add(this.#websocket);
-			}
-			else {
-				this.mousse.websockets.set(roomname, new WebSocketPool(this.#websocket));
-			}
-    }
-    if (this.#issse) {
-      if (this.mousse.sses.get(roomname)) {
-				this.mousse.sses.get(roomname)?.add(new SSEIDed(this.request, this.id));
-			}
-			else {
-				this.mousse.sses.set(roomname, new SSEPool(new SSEIDed(this.request, this.id)));
-			}
-    }
-		return this;
-	}
-
-	quit(roomname : string) : this {
-    if (this.#iswebsocket && this.#websocket) {
-			let websocketpool = this.mousse.websockets.get(roomname);
-			if (websocketpool) {
-				websocketpool.rm(this.id);
-				if (websocketpool.length < 1) {
-					this.mousse.websockets.delete(roomname);
-				}
-			}
-    }
-
-    if (this.#issse) {
-			let ssepool = this.mousse.sses.get(roomname);
-			if (ssepool) {
-				ssepool.rm(this.id);
-				if (ssepool.length < 1) {
-					this.mousse.sses.delete(roomname);
-				}
-			}
-    }
-    
-		return this;
-	}
+  }
   
   #websocketsend = async (data: string | Uint8Array, prev: Promise<void>) => {
     if (!this.#iswebsocket) {
@@ -516,15 +466,68 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
       await prev;
       await this.#websocket?.websocket.send(data);
     } catch (error) {
-      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error : error }));
       this.close(new WebSocketCloseEvent(404, `Failed to send data : ${error}`));
+      this.mousse.dispatchEvent(new ErrorEvent("error", { message: "Failed to send data", error: error }));
     }
   }
 
-  async ping(data?: WebSocketMessage) : Promise<this> {
-    if(this.#iswebsocket)
-		  await this.#websocket?.websocket.ping(data);
+  async ping(data?: WebSocketMessage): Promise<this> {
+    if (this.#iswebsocket)
+      await this.#websocket?.websocket.ping(data);
   
+    return this;
+  }
+
+  get websocket(): WebSocket | undefined {
+    if (this.#iswebsocket) {
+      return this.#websocket?.websocket;
+    }
+    else {
+      return undefined;
+    }
+  }
+
+  join(roomname: string): this {
+    if (this.#iswebsocket && this.#websocket) {
+      if (this.mousse.websockets.get(roomname)) {
+        this.mousse.websockets.get(roomname)?.add(this.#websocket);
+      }
+      else {
+        this.mousse.websockets.set(roomname, new WebSocketPool(this.#websocket));
+      }
+    }
+    if (this.#issse) {
+      if (this.mousse.sses.get(roomname)) {
+        this.mousse.sses.get(roomname)?.add(new SSEIDed(this.request, this.id));
+      }
+      else {
+        this.mousse.sses.set(roomname, new SSEPool(new SSEIDed(this.request, this.id)));
+      }
+    }
+    return this;
+  }
+
+  quit(roomname: string): this {
+    if (this.#iswebsocket && this.#websocket) {
+      let websocketpool = this.mousse.websockets.get(roomname);
+      if (websocketpool) {
+        websocketpool.rm(this.id);
+        if (websocketpool.length < 1) {
+          this.mousse.websockets.delete(roomname);
+        }
+      }
+    }
+
+    if (this.#issse) {
+      let ssepool = this.mousse.sses.get(roomname);
+      if (ssepool) {
+        ssepool.rm(this.id);
+        if (ssepool.length < 1) {
+          this.mousse.sses.delete(roomname);
+        }
+      }
+    }
+    
     return this;
   }
 }
