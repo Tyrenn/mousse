@@ -100,7 +100,6 @@ export class SSEPool{
 		else {
 			return (this.#sses.findIndex((sse) => sse.id == id.id)) > -1;
 		}
-		
 	}
 
   async broadcast(data: string | Uint8Array) {

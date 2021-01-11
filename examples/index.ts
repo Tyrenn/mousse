@@ -84,7 +84,7 @@ mousse.get("/otherwsway", async (c: WSContext) => {
 
 mousse.get("/othersseway", async (c: SSEContext, next) => {
   await c.sustain();
-  c.send("Welcome on the other way to deal with server sent event");
+  c.send("data : Welcome on the other way to deal with server sent event");
 
   next();
 },

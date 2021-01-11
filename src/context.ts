@@ -48,7 +48,8 @@ export interface CommonContext<D = any> {
   
   upgradable: boolean;
   sustainable: boolean;
-  upgrade: (handler?: ContextHandlerFunction) => Promise<WSContext>;
+  answered: boolean;
+  upgrade: () => Promise<WSContext>;
   sustain: () => Promise<SSEContext>;
   dispatchEvent : (event: Event) => boolean | undefined;
   in: (roomname: string) => StreamPool;
@@ -57,6 +58,10 @@ export interface CommonContext<D = any> {
   setCookie: (c: Cookie) => this;
 }
 
+/**
+* Server-Sent Event Context
+* Provide various utility methods to join and quit room as well as sending message to client
+*/
 export interface SSEContext<D = any> extends CommonContext<D>{
   send: (data: string | Uint8Array | ServerSentEvent) => Promise<this>;
   close: (closeEvent: ServerSentCloseEvent) => Promise<this>;
@@ -67,13 +72,11 @@ export interface SSEContext<D = any> extends CommonContext<D>{
 
 /**
 * WebSocket Context
-* Give various function to join and quit room as well as sending message to socket
+* Provide various utility methods to join and quit room as well as sending message to socket
 */
-
 export interface WSContext<D = any> extends CommonContext<D>{
-
+  
 	websocket?: WebSocket;
-  event?: WebSocketEvent;
   
 	join : (roomname : string) => this;
 	quit : (roomname : string) => this;
@@ -85,7 +88,7 @@ export interface WSContext<D = any> extends CommonContext<D>{
 
 /**
 * HTTP Context
-* Give the possibility to respond, send mime file and built http response
+* Provide the possibility to respond, send mime file and built http response
 */
 export interface HTTPContext<D = any> extends CommonContext<D>{
   response?: Response;
