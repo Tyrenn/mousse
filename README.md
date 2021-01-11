@@ -7,7 +7,7 @@
 
 <img align="right" src=./examples/res/logo.svg height="150px">
 
-Mousse is a Deno web server framework developed in typescrit. It provides simple way to route requests and handle websockets or server-sent event. Inspired by widespread framework like expressJS, it uses a similar structure based on middleware and handlers. This Deno framework was largely inspired by [abc](), [oak]() and [expressJS]().
+Mousse is a Deno web server framework developed in typescript. It provides simple ways to route http requests and handle websockets or server-sent events. Inspired by widespread framework like expressJS, it uses a similar structure based on middlewares and handlers. This Deno framework was largely inspired by [abc](https://deno.land/x/abc@v1.2.0), [oak](https://oakserver.github.io/oak/) and [expressJS](https://expressjs.com/).
 
 > In french Mousse refers to soap foam, composed of thousands of requests bubbles ☁️☁️ 
 
@@ -25,7 +25,7 @@ mousse.get("/", (c) => {
 
 In this example ```mousse``` is the Mousse application. The method ```get(path, handler)``` is used to specify what to do when a GET request target the ```"/"``` path. In the arrow handler declaration, c is of type ```HTTPContext``` and contains the request, the response and multiple utility methods.
 
-## Handlers and Router
+## Handlers and Routers
 
 
 ### Basic routing
@@ -312,7 +312,7 @@ To be able to access client WebSockets and SSE from any handlers and process spe
 
 This feature inspired by the SocketIO room system is useful in many cases such as creating chatrooms. 
 
-## TODO and Contributing
+## Contributing
 
 > Disclaimer Even though i'm proud of this first version, it represents one of my first public, ambitious and typescript based module. Many improvements needs to be done and will be, I hope.
 
