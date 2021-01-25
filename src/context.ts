@@ -428,7 +428,7 @@ export class Context<D = any> implements WSContext<D>, HTTPContext<D>, SSEContex
         await this.close();
       }
       const { conn, r: bufReader, w: bufWriter, headers } = this.request;
-      let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err) => { throw (`failed to accept websocket: ${err}`); });
+      let websocket = await acceptWebSocket({ conn, bufReader, bufWriter, headers }).catch((err : Error) => { throw (`failed to accept websocket: ${err}`); });
       if (websocket) {
         this.#websocket = new WebSocketIDed(websocket, this.id);
         this.#iswebsocket = true;
