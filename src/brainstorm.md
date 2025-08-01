@@ -7,10 +7,7 @@ Routes can have their path modified !
 // Validator
 // Interface requiring validate / todoc
 // Basic one using Zod
-
-// Logger
-// Interface 
-// Give it to Context !
+=> Meaning options on HTTP Routes !
 
 // Documentor 
 // => Create documentation from App

@@ -3,9 +3,10 @@ import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler';
 import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router';
 import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context';
 import { joinUri } from './utils';
+import { Logger } from './logger';
 //import { WebSocketOptions, WebSocket } from './websocket';
 export type MousseOptions = uWSAppOptions & {
-
+	logger? : Logger;
 }
 
 export class Mousse{
@@ -22,8 +23,11 @@ export class Mousse{
 
 	private _listenSocket : uWSListenSocket | undefined;
 
-	contructor(options? : uWSAppOptions){
+	private _logger : Logger | undefined;
+
+	contructor(options? : MousseOptions){
 		this._app = uWSApp(options);
+		this._logger = options?.logger;
 	}
 
 	/**
@@ -45,7 +49,7 @@ export class Mousse{
 		const params = pattern.match(/:[\w]+/g) ?? [];
 
 		this._app[method](pattern, async (ures, ureq) => {
-			const context = new Context(ureq, ures, pattern, params, this, false, (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method));
+			const context = new Context(this, ureq, ures, pattern, params, false, (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method));
 			let res : any = undefined;
 
 			try{
@@ -91,7 +95,7 @@ export class Mousse{
 		this._app.ws(pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				const context = new Context(ureq, ures, pattern, params, this, true, false, wsc, options?.maxBackPressure);
+				const context = new Context(this, ureq, ures, pattern, params, true, false, wsc, options?.maxBackPressure);
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++) 
@@ -219,6 +223,33 @@ export class Mousse{
 	}
 
 
+	/**
+	 * 
+	 * @param logger 
+	 * @returns 
+	 */
+	setLogger(logger : Logger | undefined){
+		this._logger = logger;
+
+		return this;
+	}
+
+
+	/**
+	 * 
+	 * @param data 
+	 */
+	log(data? : any){
+		if(this._logger)
+			this._logger.log(data);
+	}
+
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 */
 	use<CT extends ContextTypes>(pattern : string, ...handlers : Array<PassiveContextHandler<CT> | Router<CT>>){
 		if(handlers.length < 1)
 			throw new Error(`At least one handler is required in 'use' for pattern ${pattern}`);

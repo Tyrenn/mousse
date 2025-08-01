@@ -4,6 +4,7 @@ import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import { Mousse } from './mousse';
 import { parseQuery } from './utils';
+import { Logger } from './logger';
 
 export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
 export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
@@ -37,7 +38,6 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 	// The mousse instance that has created the context
 	private _mousse : Mousse;
-
 
 //// *
 // * Request related attributes 
@@ -110,7 +110,7 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	private _maxBackPressure : number;
 
 
-	constructor(req : uHttpRequest, res : uHttpResponse, route : string, params : string[], mousse : Mousse, upgradable : boolean, sustainable : boolean, socketContext? : uWSSocketContext, maxBackPressure? : number) {
+	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], upgradable : boolean, sustainable : boolean, socketContext? : uWSSocketContext, maxBackPressure? : number) {
 		this._ureq = req;
 		this._ures = res;
 		this._route = route;
@@ -142,6 +142,15 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 	get mousse(){
 		return this._mousse;
+	}
+
+
+//// *
+// * OTHER METHODS
+//// *
+
+	log(data? : any){
+		this._mousse.log(data);
 	}
 
 
