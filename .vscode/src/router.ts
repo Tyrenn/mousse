@@ -1,29 +1,38 @@
-import { ActiveHTTPContextHandler, HTTPContextTypes, PassiveHTTPContextHandler } from './httpcontext';
+import { ActiveContextHandler, ContextTypes, PassiveContextHandler } from './context';
 import { joinUri } from './utils';
+import { WebSocketOptions } from './websocket';
 
 export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put';
 
 export type RouteMethod =  HTTPRouteMethod | 'ws';
 
-export interface Route<CT extends HTTPContextTypes> {
+export interface HTTPRoute<CT extends ContextTypes> {
 	method : HTTPRouteMethod;
 	pattern: string;
-	handler: ActiveHTTPContextHandler<CT>;
+	handler: ActiveContextHandler<CT>;
 };
 
-export interface Middleware<CT extends HTTPContextTypes>{
+export interface Middleware<CT extends ContextTypes>{
 	pattern : string;
-	handler: PassiveHTTPContextHandler<CT>;
+	handler: PassiveContextHandler<CT>;
+}
+
+export interface WSRoute<CT extends ContextTypes>{
+	pattern : string;
+	options? : WebSocketOptions;
+	handler: PassiveContextHandler<CT>;
 }
 
 /**
  * Router are simply collection of routes and middlewares
  * They can be used as middleware in the Mousse or other Router 'use' method
  */
-export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
-	private _routes : Route<any>[] = new Array();
+export class Router<DefaultContextTypes extends ContextTypes = any>{
+	private _routes : HTTPRoute<any>[] = new Array();
 
 	private _middlewares : Middleware<any>[] = new Array();
+
+	private _wsroutes : WSRoute<any>[] = new Array();
 
 	constructor(){
 	
@@ -37,6 +46,10 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 		return this._middlewares;
 	}
 
+	get wsroutes(){
+		return this._wsroutes;	
+	}
+
 	/**
 	 * Register new route
 	 * If middlewares are provided, record them using 'use' method
@@ -45,7 +58,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	add<CT extends DefaultContextTypes = DefaultContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]){
+	add<CT extends DefaultContextTypes = DefaultContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
 		// ? NOTE WHAT ABOUT MULTIPLE HANDLERS ?
 		// ? HOW TO HANDLE RETURNED DATA => IF handler has a return statement
 		
@@ -56,8 +69,8 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 			this._routes.push({method, pattern, handler : handlers[0]});
 		else{
 			// Last one is always an ActiveContextHandler
-			const handler : ActiveHTTPContextHandler<CT> = handlers.pop() as ActiveHTTPContextHandler<CT>;
-			this.use(pattern, ...(handlers as PassiveHTTPContextHandler<CT>[]));
+			const handler : ActiveContextHandler<CT> = handlers.pop() as ActiveContextHandler<CT>;
+			this.use(pattern, ...(handlers as PassiveContextHandler<CT>[]));
 			this._routes[method].push({pattern, handler});
 		}
 
@@ -70,7 +83,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	use<CT extends DefaultContextTypes>(pattern : string, ...handlers : Array<PassiveHTTPContextHandler<CT> | Router<CT>>){
+	use<CT extends DefaultContextTypes>(pattern : string, ...handlers : Array<PassiveContextHandler<CT> | Router<CT>>){
 		if(handlers.length < 1)
 			throw new Error(`At least one handler is required in 'use' for pattern ${pattern}`);
 		
@@ -89,7 +102,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 				}
 			}
 			else{
-				this._middlewares.push({pattern, handler : handlers[i] as PassiveHTTPContextHandler<CT>});
+				this._middlewares.push({pattern, handler : handlers[i] as PassiveContextHandler<CT>});
 			}
 		}
 
@@ -102,7 +115,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	any<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) { 
+	any<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
 		return this.add<CT>('any', pattern, ...handlers);
 	}
 
@@ -112,7 +125,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	del<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) { 
+	del<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
 		return this.add<CT>('del', pattern, ...handlers);
 	}
 
@@ -122,7 +135,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	get<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
+	get<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('get', pattern, ...handlers);
 	}
 
@@ -132,7 +145,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	head<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
+	head<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('head', pattern, ...handlers);
 	}
 
@@ -142,7 +155,7 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	options<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
+	options<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('options', pattern, ...handlers);
 	}
 
@@ -152,11 +165,32 @@ export class Router<DefaultContextTypes extends HTTPContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
-	post<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) { 
+	post<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
 		return this.add<CT>('post', pattern, ...handlers);
 	}
 
 	// ? This one might evolve with specific context
 	//ws<D extends any>(pattern: string, handler: ContextHandler<D>) : Router { return this.add<D>('ws', pattern, handler); }
+	ws<CT extends DefaultContextTypes>(pattern: string, ...args : [WebSocketOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
+		if(args.length < 1){
+			this._wsroutes.push({pattern, handler : () => {}});
+			return this;
+		}
+		else if(args.length == 1 && typeof args[0] === "function"){
+			this._wsroutes.push({pattern, handler : args[0]});
+			return this;
+		}
+		else if(args.length == 1 && typeof args[0] !== "function"){
+			this._wsroutes.push({pattern, options : args[0], handler : () => {}});
+		
+		}
+		else if(args.length > 1){
+			const handler = args.pop() as PassiveContextHandler<CT>;
+			const options = typeof args[0] === "function" ? undefined : args.shift() as WebSocketOptions;
+			this.use(pattern, ...(args as PassiveContextHandler<CT>[]));
+			this._wsroutes.push({pattern, options, handler});
+		}
 
+		return this;
+	}
 }

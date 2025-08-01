@@ -1,0 +1,532 @@
+import { getParts, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, us_socket_context_t as uWSSocketContext } from 'uWebSockets.js';
+import { readFile } from 'fs/promises';
+import mime_types from "mime-types";
+import {STATUS_CODES} from 'http'
+import { Mousse } from './mousse';
+import { parseQuery } from './utils';
+import {WebSocket} from './websocket';
+
+export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
+export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
+
+
+
+/**
+ * Websocket listenable event keys and their handler type
+ */
+export type WebSocketEventHandlers = {
+	'message' : (ws : WebSocket, message : ArrayBuffer, isBinary? : boolean) => void | Promise<void>;
+	'close' : (ws : WebSocket, code: number, message: ArrayBuffer) => void;
+	'drain' : (ws : WebSocket) => void;
+	'dropped' : (ws : WebSocket, message : ArrayBuffer, isBinary? : boolean) => void | Promise<void>;
+	'open' : (ws : WebSocket) => void | Promise<void>;
+	'ping' : (ws : WebSocket, message : ArrayBuffer) => void | Promise<void>;
+	'pong' : (ws : WebSocket, message : ArrayBuffer) => void | Promise<void>;
+	'subscription' : (ws : WebSocket, topic: ArrayBuffer, newCount: number, oldCount: number) => void;
+};
+
+export type ContextTypes = {
+	Body? : any;
+	Response? : any;
+}
+
+export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
+
+
+	// The mousse instance that has created the context
+	private _mousse : Mousse;
+
+
+	/**
+	// * Request related attributes 
+	*/
+	// uWebSocket.js request
+	private _ureq : uHttpRequest;
+
+	// The route pattern 
+	private _route : string;
+
+	// Parsed body value
+	private _bodyParsed: { [key: string]: any } | null = null;
+
+	// Raw body value
+	private _bodyRaw: Buffer | null = null;
+
+	// Populated param
+	private _params: Record<string, string> = {};
+
+	// Request headers
+	private _reqHeaders : Record<string, string> = {};
+
+
+	/**
+	// * Response related attributes 
+	*/
+	// uWebSocket.js response
+	private _ures : uHttpResponse;
+
+	// Response headers 
+	private _headers : Record<string, string> = {};
+
+   // Returns the custom HTTP underlying status code of the response.
+	private _statusCode : number = 200;
+	
+   // Returns the custom HTTP underlying status code message of the response.
+   private _statusMessage? : string = undefined;
+
+	// Flag if response has been sent
+	private _ended : boolean = false;
+
+
+	/**
+	// * WS related attributes 
+	*/
+
+	private _upgraded : boolean = false;
+
+	private _upgradable : boolean = false;
+
+	private _wsEventHandlers : Partial<WebSocketEventHandlers> = {};
+
+	private _socketContext : uWSSocketContext | undefined;
+
+	private _bufferQueue : [];
+
+	/**
+		Flag used for send to know if an error has been thrown
+	*/
+	// _thrown : boolean = false;
+
+	constructor(req : uHttpRequest, res : uHttpResponse, route : string, params : string[], mousse : Mousse, upgradable : boolean, socketContext? : uWSSocketContext) {
+		this._ureq = req;
+		this._ures = res;
+		this._route = route;
+		this._mousse = mousse;
+
+		this._upgradable = upgradable;
+		this._socketContext = socketContext;
+
+		// Populate params
+		for (let i = 0; i < params.length; i++)
+			this._params[params[i].slice(1).toLowerCase()] = this._ureq.getParameter(i)!;
+
+		// Populate headers
+		this._ureq.forEach((key, value) => this._reqHeaders[key] = value);
+		
+		// Bind the abort handler as required by uWebsockets.js for each uWS.HttpResponse to allow for async processing
+		// https://github.com/uNetworking/uWebSockets.js/blob/master/examples/AsyncFunction.js
+      res.onAborted(() => {
+			if (this._ended) 
+				return;
+			this._ended = true;
+		});
+		
+
+		// ? Need to check if request has been paused or has not been fully received (see hyper express)
+	}
+
+
+	get mousse(){
+		return this._mousse;
+	}
+
+
+//// *
+// * REQUEST METHODS
+//// *
+
+	/**
+	 * Gather all body data
+	 * @param res 
+	 * @returns 
+	 */
+	private async _getBodyRaw(res: uHttpResponse): Promise<Buffer> {
+		let buffer: Buffer;
+
+		return new Promise(resolve => res.onData(
+			(ab, isLast) => {
+				const chunk = Buffer.from(ab);
+
+				if (isLast) {
+					if (buffer) 
+						resolve(Buffer.concat([buffer, chunk]));
+					else 
+						resolve(chunk);
+				} else {
+					if (buffer) 
+						buffer = Buffer.concat([buffer, chunk]);
+					else 
+						buffer = Buffer.concat([chunk]);
+				}
+			}
+		));
+	}
+
+	/**
+	 * Parse body based on contentType
+	 * @param body 
+	 * @returns 
+	 */
+	private _parseBodyRaw(contentType : string, body? : Buffer<ArrayBufferLike>){
+		if(!body?.length)
+			return {};
+
+		if(contentType === 'application/json'){
+			const bodyStr = body.toString();
+			return bodyStr ? JSON.parse(bodyStr) : {};
+		}
+
+		if(contentType === 'application/x-www-form-urlencoded'){
+			const bodyStr = body.toString();
+			return bodyStr ? parseQuery(bodyStr) : {};
+		}
+
+		if (contentType.startsWith('multipart/form-data')) {
+			const multiparts = getParts(body, contentType);
+			if(!multiparts) 
+				return {};
+			
+			const data: Record<string, string> = {};
+			for(const p of multiparts){
+				if (!p.type && !p.filename) 
+					data[p.name] = Buffer.from(p.data).toString();
+			}
+
+			return data;
+		}
+
+		return body;
+	}
+
+	get request(){
+		return this._ureq;
+	}
+	
+	get route(){
+		return this._route;
+	}
+
+	/**
+	 * 
+	 * @param raw 
+	 */
+	async body(raw : true) : Promise<Buffer>;
+	async body(raw? : false) : Promise<Types["Body"]>;
+	async body(raw? : boolean) : Promise<Types["Body"] | Buffer>  {
+		const contentType = this._ureq.getHeader('content-type');
+
+		// ? Should send an error ?
+		if (!contentType)
+			return {} as Types["Body"];
+
+		if(this._bodyParsed && !raw)
+			return this._bodyParsed as Types["Body"];
+
+		if(this._bodyRaw && raw)
+			return this._bodyRaw;
+
+		this._bodyRaw = await this._getBodyRaw(this._ures);
+		this._bodyParsed = this._parseBodyRaw(contentType);
+		
+		return raw ? this._bodyRaw : (this._bodyParsed ?? {}) as Types["Body"];
+	}
+
+	/**
+	 * 
+	 * @returns 
+	 */
+	get headers(): { [key: string]: string } {
+		return this._reqHeaders;
+	}
+
+	/**
+	 * 
+	 * @returns 
+	 */
+	getHeader(key : string) : string | null {
+		return this._ureq.getHeader(key.toLowerCase());
+	}
+
+	/**
+	 * 
+	 * @returns 
+	 */
+	method() {
+		return this._ureq.getMethod();
+	}
+
+	/**
+	 * 
+	 * @returns 
+	 */
+	get params() : Record<string, string> {
+		return this._params;
+	}
+
+	/**
+	 * 
+	 * @param key 
+	 * @returns 
+	 */
+	param(key: string) : string | undefined {
+		return Object.keys(this._params).includes(key.toLowerCase()) ? this._params[key.toLowerCase()] : undefined;
+	}
+
+	/**
+	 */
+	get query(): { [key: string]: any } {
+		const query = this._ureq.getQuery();
+
+		if (query) 
+			return parseQuery(query);
+
+		return {};
+	}
+
+	/**
+	 */
+	get url() {
+		return this._ureq.getUrl();
+	}
+
+
+	contentType() {
+		return this._ureq.getHeader('content-type');
+	}
+
+
+
+
+
+//// *
+// * RESPONSE METHOD
+//// *
+
+	get response(){
+		return this._ures;
+	}
+
+	//*
+
+	status(code: number, message? : string) {
+		this._statusCode = code;
+		this._statusMessage = message;
+
+		return this;
+	}
+
+	/**
+	 */
+	get statusCode(){
+		return this._statusCode;
+	}
+
+	/**
+	* 
+	*/
+	/**
+	 * Set the response content type header based on the provided mime type. Example: type('json')
+	 * @param filenameOrExt file extension or mime types
+	 * @returns 
+	 */
+	type(filenameOrExt : string) {
+		if (filenameOrExt[0] === '.') 
+			filenameOrExt = filenameOrExt.substring(1);
+
+		this.header('content-type', mime_types.contentType(filenameOrExt) || 'text/plain');
+		return this;
+	}
+
+	/**
+	 * Either set header using string or object
+	 * @param field 
+	 * @param value 
+	 */
+	header(name : string, value : string) : Context<Types>;
+	header(field : Record<string, any>) : Context<Types>;
+	header(field : Record<string, any> | string, value? : string) : Context<Types> {
+		if(typeof field === 'object') {
+			for(const header in field)
+				this.header(header, field[header]);
+			return this;
+		}
+
+		if(typeof field === 'string' && !value)
+			throw new Error('Header value is required');
+		
+      this._headers[field.toLowerCase()] = value!;
+
+		return this;
+	}
+
+
+	/**
+	 * This method is used to end the current response and respond with specified body and headers.
+	 * All writes actions are corked as required by uWebsocket.js specifications
+	 ** NOTE Streamable case not handled for now
+	 * @param body 
+	 * @returns 
+	 */
+   respond(body? : string | Buffer | ArrayBuffer) {
+		
+		// Check if the response has already been sent
+		if(this._ended)
+			return this;
+
+		// Check if has been upgraded
+		if(this._upgraded)
+			return this;
+
+		this._ures.cork(() => {
+			// Write status code along with mapped status code message
+			if (this._statusCode || this._statusMessage)
+				this._ures.writeStatus((this._statusCode ?? 200) + ' ' + (this._statusMessage || STATUS_CODES[this._statusCode ?? 200]));
+			else
+				this._ures.writeStatus("200 " + STATUS_CODES[200]);
+
+			// Write headers
+			for (const name in this._headers) {
+				this._ures.writeHeader(name, Array.isArray(this._headers[name]) ? this._headers[name].join(', ') : this._headers[name]); 
+			}
+
+			// Need to send a response without a body with the custom content-length header
+			if(body === undefined && !!this._headers['content-length']){
+				const contentLength : string | string[] = this._headers['content-length'];
+				const reportedContentLength : number = parseInt(Array.isArray(contentLength) ? contentLength[contentLength.length - 1] : contentLength);
+				this._ures.endWithoutBody(reportedContentLength);
+			}
+			else
+				this._ures.end(body);
+		});
+
+		this._ended = true;
+		this._upgradable = false;
+
+      return this;
+   }
+
+	/**
+	 * 
+	 * @returns 
+	 */
+	get ended(){
+		return this._ended;
+	}
+
+
+	/**
+	 * This method is used to redirect an incoming request to a different url.
+	 * @param url 
+	 * @returns 
+	 */
+	redirect(url : string) {
+		if (!this._ended) 
+			return this.status(302).header('location', url).respond();
+		return this;
+	}
+
+
+	/**
+	 * respond() alias setting application/json content type and sends provided json object
+	 * @param body 
+	 * @param status
+	 * @returns 
+	 */
+   json(body : Types["Body"], status? : {code : number, message? : string}) {
+		if(this._upgraded)
+			return;
+
+		if(status)
+			this.status(status.code, status.message);
+
+		return this.header('content-type', 'application/json').respond(JSON.stringify(body));
+   }
+
+
+	/**
+	 * respond() alias setting text/html content type and sends provided html
+	 * @param body 
+	 * @returns 
+	 */
+	html(body : string, status? : {code : number, message? : string}) {
+		if(this._upgraded)
+			return;
+		
+		if(status)
+			this.status(status.code, status.message);
+
+		return this.header('content-type', 'text/html').respond(body);
+	}
+
+
+	async file(path: string) {
+		if(this._upgraded)
+			return;
+		
+		try {
+			const file = await readFile(path);
+
+			this.type(path.toLowerCase()).respond(file as any);
+		} catch (e) {
+			this.status(404).respond('Not found');
+		}
+	}
+
+
+
+
+
+
+//// *
+// * WEBSOCKET METHOD
+//// *
+
+	get upgradable(){
+		return this._upgradable;
+	}
+
+	get upgraded(){
+		return this._upgraded;
+	}
+
+	get wsEventHandlers(){
+		return this._wsEventHandlers;
+	}
+
+	on<Event extends keyof WebSocketEventHandlers>(type: Event, listener: WebSocketEventHandlers[Event]){
+		this._wsEventHandlers[type] = listener;
+	}
+
+	off<Event extends keyof WebSocketEventHandlers>(type : Event){
+		delete this._wsEventHandlers[type];
+	}
+
+	onMessage(listener : WebSocketEventHandlers["message"]){ this._wsEventHandlers["message"] = listener; }
+	onClose(listener : WebSocketEventHandlers["close"]){ this._wsEventHandlers["close"] = listener; };
+	onDrain(listener : WebSocketEventHandlers["drain"]){ this._wsEventHandlers["drain"] = listener; }
+	onDropped(listener : WebSocketEventHandlers["dropped"]){ this._wsEventHandlers["dropped"] = listener; }
+	onOpen(listener : WebSocketEventHandlers["open"]){ this._wsEventHandlers["open"] = listener; }
+	onPing(listener : WebSocketEventHandlers["ping"]){ this._wsEventHandlers["ping"] = listener; }
+	onPong(listener : WebSocketEventHandlers["pong"]){ this._wsEventHandlers["pong"] = listener; }
+	onSubscription(listener : WebSocketEventHandlers["subscription"]){ this._wsEventHandlers["subscription"] = listener; }
+
+	upgrade(){
+		if(this._ended || !this._upgradable || !this._socketContext)
+			throw new Error('Current context cannot be upgraded');
+
+		if(this._upgraded)
+			return;
+
+		this._upgraded = true;
+		this._ures.upgrade(undefined,
+			/* Spell these correctly */
+			this._ureq.getHeader('sec-websocket-key'),
+			this._ureq.getHeader('sec-websocket-protocol'),
+			this._ureq.getHeader('sec-websocket-extensions'),
+			this._socketContext
+		);
+	}
+
+	// ? What about closing ws ??
+	// ? Should put every wrapper method in another websocket object ?
+}
