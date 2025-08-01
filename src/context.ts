@@ -1,15 +1,17 @@
-import { getParts, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, us_socket_context_t as uWSSocketContext } from 'uWebSockets.js';
+import { getParts, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, us_socket_context_t as uWSSocketContext, WebSocket as uWSWebSocket } from 'uWebSockets.js';
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import { Mousse } from './mousse';
 import { parseQuery } from './utils';
-import {WebSocket} from './websocket';
 
 export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
 export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
 
-
+/**
+ * Enhanced websocket
+ */
+export type WebSocket = uWSWebSocket<{handlers : Partial<WebSocketEventHandlers>, maxBackPressure : number, bufferQueue : RecognizedString[]}>;
 
 /**
  * Websocket listenable event keys and their handler type
@@ -518,7 +520,11 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 			return;
 
 		this._upgraded = true;
-		this._ures.upgrade(undefined,
+		this._ures.upgrade({
+			handlers : this._wsEventHandlers,
+			bufferQueue : [],
+			maxBackPressure : 16 * 1024
+		},
 			/* Spell these correctly */
 			this._ureq.getHeader('sec-websocket-key'),
 			this._ureq.getHeader('sec-websocket-protocol'),

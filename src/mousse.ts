@@ -1,9 +1,9 @@
-import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket} from 'uWebSockets.js';
+import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket, RecognizedString} from 'uWebSockets.js';
 import { ErrorHandler } from './errorhandler';
 import { HTTPRouteMethod, Middleware, RouteMethod, Router } from './router';
-import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler } from './context';
+import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context';
 import { joinUri } from './utils';
-import { WebSocketOptions, WebSocket } from './websocket';
+//import { WebSocketOptions, WebSocket } from './websocket';
 export type MousseOptions = uWSAppOptions & {
 
 }
@@ -81,12 +81,13 @@ export class Mousse{
 		// Match params one time to avoid doing it in realtime everytime we build a context
 		const params = pattern.match(/:[\w]+/g) ?? [];
 		let wrappedWebSocket : WebSocket;
-		let context : Context<any>;
+		// ! TODO Warning, won't work, context and wrappedWebSocket are shared amoung connections ! Attach them to websocket user data ?
+		// ! How keeping websocket trace
 
 		this._app.ws(pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				context = new Context(ureq, ures, pattern, params, this, true, wsc);
+				const context = new Context(ureq, ures, pattern, params, this, true, wsc);
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++) 
@@ -103,69 +104,87 @@ export class Mousse{
 						this._errorHandler(e, context);
 				}
 			},
-			open: (ws) => {
+			open: (ws: WebSocket) => {
 				try{
-					wrappedWebSocket = new WebSocket(ws as uWSWebSocket<undefined>, options);
-					if(context.wsEventHandlers['open'])
-						context.wsEventHandlers['open'](wrappedWebSocket);
+					// Replace send function by a safer one taking into account backpressure
+					ws.send = function (this : WebSocket, message : RecognizedString, isBinary? : boolean, compress? : boolean){
+						if (this.getBufferedAmount() < this.getUserData().maxBackPressure)
+							return this.send(message, isBinary, compress);
+						else
+							this.getUserData().bufferQueue.push(message);
+						return 0;
+					};
+					const handler = ws.getUserData().handlers.open;
+					if(handler)
+						handler(ws);
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
-			message: (ws, message, isBinary) => {
+			message: (ws: WebSocket, message, isBinary) => {
 				try{
-					if(context.wsEventHandlers['message'])
-						context.wsEventHandlers['message'](wrappedWebSocket, message, isBinary);
+					const handler = ws.getUserData().handlers.message;
+					if(handler)
+						handler(ws, message, isBinary);
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}				
 			},
 			ping: (ws, message) => {
 				try{
-					if(context.wsEventHandlers['ping'])
-						context.wsEventHandlers['ping'](wrappedWebSocket, message);
+					const handler = ws.getUserData().handlers.ping;
+					if(handler)
+						handler(ws, message);
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
 			pong: (ws, message) => {
 				try{
-					if(context.wsEventHandlers['pong'])
-						context.wsEventHandlers['pong'](wrappedWebSocket, message);
+					const handler = ws.getUserData().handlers.pong;
+					if(handler)
+						handler(ws, message);
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
 			dropped: (ws, message, isBinary) => {
 				try{
-					if(context.wsEventHandlers['dropped'])
-						context.wsEventHandlers['dropped'](wrappedWebSocket, message, isBinary);
+					const handler = ws.getUserData().handlers.dropped;
+					if(handler)
+						handler(ws, message, isBinary);
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
-			drain: (ws) => {
+			drain: (ws : WebSocket) => {
 				try{
-					wrappedWebSocket.drain();
-					if(context.wsEventHandlers['drain'])
-						context.wsEventHandlers['drain'](wrappedWebSocket);
+					while(ws.getUserData().bufferQueue.length > 0 && ws.getBufferedAmount() < ws.getUserData().maxBackPressure) {
+						const nextMessage = ws.getUserData().bufferQueue.shift();
+						if(nextMessage)
+							ws.send(nextMessage);
+					}
+					const handler = ws.getUserData().handlers.drain;
+					if(handler)
+						handler(ws);				
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
 			close: (ws, code, message) => {
 				try{
-					if(context.wsEventHandlers['close'])
-						context.wsEventHandlers['close'](wrappedWebSocket, code, message);				
+					const handler = ws.getUserData().handlers.close;
+					if(handler)
+						handler(ws, code, message);				
 				} catch(e) {
 					if(this._errorHandler)
-						this._errorHandler(e, context);
+						this._errorHandler(e);
 				}
 			},
 		})
