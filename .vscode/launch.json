@@ -1,0 +1,36 @@
+{
+	"version": "0.1.0",
+	"configurations": [
+		{
+			"name": "Build & Debug",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/src/index.ts",
+			"preLaunchTask": "tsc: build - tsconfig.json",
+			"outFiles": ["${workspaceFolder}/build/**/*.js"]
+		},
+		{
+			"name": "DEV - Build & Debug",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/src/dev.ts",
+			"preLaunchTask": "tsc: build - tsconfig.json",
+			"outFiles": ["${workspaceFolder}/build/**/*.js"]
+		},
+		{
+			"name": "DOC - Build & Debug",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/src/doc.ts",
+			"preLaunchTask": "tsc: build - tsconfig.json",
+			"outFiles": ["${workspaceFolder}/build/**/*.js"]
+		},
+		{
+			"name": "Build & Run",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/build",
+			"preLaunchTask": "tsc: build - tsconfig.json"
+		}
+	]
+}
