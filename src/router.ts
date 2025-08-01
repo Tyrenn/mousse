@@ -1,8 +1,7 @@
 import { ActiveContextHandler, ContextTypes, PassiveContextHandler } from './context';
 import { joinUri } from './utils';
-import { WebSocketOptions } from './websocket';
 
-export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put';
+export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put' | 'patch';
 
 export type RouteMethod =  HTTPRouteMethod | 'ws';
 
@@ -17,9 +16,13 @@ export interface Middleware<CT extends ContextTypes>{
 	handler: PassiveContextHandler<CT>;
 }
 
+export type WSRouteOptions = {
+	maxBackPressure? : number;
+}
+
 export interface WSRoute<CT extends ContextTypes>{
 	pattern : string;
-	options? : WebSocketOptions;
+	options? : WSRouteOptions;
 	handler: PassiveContextHandler<CT>;
 }
 
@@ -100,6 +103,11 @@ export class Router<DefaultContextTypes extends ContextTypes = any>{
 					const route = router.routes[j];
 					this._routes.push({method : route.method, pattern : joinUri(pattern, route.pattern), handler : route.handler});
 				}
+
+				for(let j = 0; j < router.wsroutes.length; j++){
+					const wsroute = router.wsroutes[j];
+					this._wsroutes.push({pattern : joinUri(pattern, wsroute.pattern), handler : wsroute.handler, options : wsroute.options});
+				}
 			}
 			else{
 				this._middlewares.push({pattern, handler : handlers[i] as PassiveContextHandler<CT>});
@@ -169,24 +177,35 @@ export class Router<DefaultContextTypes extends ContextTypes = any>{
 		return this.add<CT>('post', pattern, ...handlers);
 	}
 
-	// ? This one might evolve with specific context
-	//ws<D extends any>(pattern: string, handler: ContextHandler<D>) : Router { return this.add<D>('ws', pattern, handler); }
-	ws<CT extends DefaultContextTypes>(pattern: string, ...args : [WebSocketOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
+	patch<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+		return this.add<CT>('patch', pattern, ...handlers);
+	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param args 
+	 * @returns 
+	 */
+	ws<CT extends DefaultContextTypes>(pattern: string, ...args : [WSRouteOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
 		if(args.length < 1){
 			this._wsroutes.push({pattern, handler : () => {}});
-			return this;
 		}
 		else if(args.length == 1 && typeof args[0] === "function"){
 			this._wsroutes.push({pattern, handler : args[0]});
-			return this;
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
 			this._wsroutes.push({pattern, options : args[0], handler : () => {}});
-		
 		}
-		else if(args.length > 1){
+		else{
 			const handler = args.pop() as PassiveContextHandler<CT>;
-			const options = typeof args[0] === "function" ? undefined : args.shift() as WebSocketOptions;
+			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
 			this.use(pattern, ...(args as PassiveContextHandler<CT>[]));
 			this._wsroutes.push({pattern, options, handler});
 		}

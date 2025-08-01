@@ -39,9 +39,10 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	private _mousse : Mousse;
 
 
-	/**
-	// * Request related attributes 
-	*/
+//// *
+// * Request related attributes 
+//// *
+
 	// uWebSocket.js request
 	private _ureq : uHttpRequest;
 
@@ -61,9 +62,10 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	private _reqHeaders : Record<string, string> = {};
 
 
-	/**
-	// * Response related attributes 
-	*/
+//// *
+// * Response related attributes 
+//// *
+
 	// uWebSocket.js response
 	private _ures : uHttpResponse;
 
@@ -80,26 +82,35 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	private _ended : boolean = false;
 
 
-	/**
-	// * WS related attributes 
-	*/
+//// *
+// * SSE related attributes 
+//// *
+	private _sustainable : boolean = false;
 
-	private _upgraded : boolean = false;
+	private _sustained : boolean = false;
 
+	private _eventQueue : string[] = [];
+
+	private _isDraining : boolean = false;
+
+
+//// *
+// * WS related attributes 
+//// *
 	private _upgradable : boolean = false;
 
+	// 
+	private _upgraded : boolean = false;
+
+	//
 	private _wsEventHandlers : Partial<WebSocketEventHandlers> = {};
 
 	private _socketContext : uWSSocketContext | undefined;
 
-	private _bufferQueue : [];
+	private _maxBackPressure : number;
 
-	/**
-		Flag used for send to know if an error has been thrown
-	*/
-	// _thrown : boolean = false;
 
-	constructor(req : uHttpRequest, res : uHttpResponse, route : string, params : string[], mousse : Mousse, upgradable : boolean, socketContext? : uWSSocketContext) {
+	constructor(req : uHttpRequest, res : uHttpResponse, route : string, params : string[], mousse : Mousse, upgradable : boolean, sustainable : boolean, socketContext? : uWSSocketContext, maxBackPressure? : number) {
 		this._ureq = req;
 		this._ures = res;
 		this._route = route;
@@ -107,6 +118,7 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 		this._upgradable = upgradable;
 		this._socketContext = socketContext;
+		this._maxBackPressure = maxBackPressure ?? 16 * 1024; // 16kb default
 
 		// Populate params
 		for (let i = 0; i < params.length; i++)
@@ -301,7 +313,7 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 
 //// *
-// * RESPONSE METHOD
+// * RESPONSE METHODS
 //// *
 
 	get response(){
@@ -403,6 +415,7 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 		this._ended = true;
 		this._upgradable = false;
+		this._sustainable = false;
 
       return this;
    }
@@ -477,10 +490,66 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 
 
 
+//// *
+// * SSE METHODS
+//// *
+
+	sustain(){
+		if(this._ended || !this._sustainable)
+			throw new Error('Context is not sustainable');
+		if(this._sustained)
+			return;
+		
+		this._ures.writeHeader('content-type', 'text/event-stream');
+		this._ures.writeHeader('connection', 'keep-alive');
+		this._ures.writeHeader('cache-control', 'no-cache');
+
+		this._sustained = true;
+	}
+
+	private flushEventQueue() {
+		if (this._isDraining) 
+			return;
+
+		this._isDraining = true;
+
+		let wrote = true;
+		while (wrote && this._eventQueue.length > 0) {
+			const message = this._eventQueue.shift()!;
+			wrote = this._ures.write(`data: ${message}\n\n`);
+		}
+
+		if (!wrote) {
+			this._ures.onWritable(() => {
+				let wrote = true;
+				while (wrote && this._eventQueue.length > 0) {
+					const message = this._eventQueue.shift()!;
+					wrote = this._ures.write(`data: ${message}\n\n`);
+				}
+
+				if (this._eventQueue.length === 0 || wrote) {
+					this._isDraining = false;
+					return false; // stop calling onWritable
+				}
+
+				return true; // keep trying
+			});
+		} else {
+			this._isDraining = false;
+		}
+	}
+
+	send(data : string | object){
+		if(this._ended || !this._sustained)
+			throw new Error('Context is not sustained');
+		
+		this._eventQueue.push(typeof data === "string" ? data : JSON.stringify(data));
+		this.flushEventQueue();
+	}
 
 
 //// *
-// * WEBSOCKET METHOD
+// * WEBSOCKET METHODS
 //// *
 
 	get upgradable(){
@@ -523,7 +592,7 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 		this._ures.upgrade({
 			handlers : this._wsEventHandlers,
 			bufferQueue : [],
-			maxBackPressure : 16 * 1024
+			maxBackPressure : this._maxBackPressure
 		},
 			/* Spell these correctly */
 			this._ureq.getHeader('sec-websocket-key'),

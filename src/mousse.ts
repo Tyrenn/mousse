@@ -1,6 +1,6 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket, RecognizedString} from 'uWebSockets.js';
-import { ErrorHandler } from './errorhandler';
-import { HTTPRouteMethod, Middleware, RouteMethod, Router } from './router';
+import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler';
+import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router';
 import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context';
 import { joinUri } from './utils';
 //import { WebSocketOptions, WebSocket } from './websocket';
@@ -13,6 +13,8 @@ export class Mousse{
 	private _app : uWSTemplatedApp;
 
 	private _errorHandler : ErrorHandler | undefined;
+	
+	private _wsErrorHandler : WebsocketEventErrorHandler | undefined;
 
 	private _defaultHandler : ActiveContextHandler<any> | undefined;
 
@@ -43,7 +45,7 @@ export class Mousse{
 		const params = pattern.match(/:[\w]+/g) ?? [];
 
 		this._app[method](pattern, async (ures, ureq) => {
-			const context = new Context(ureq, ures, pattern, params, this, false);
+			const context = new Context(ureq, ures, pattern, params, this, false, (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method));
 			let res : any = undefined;
 
 			try{
@@ -68,8 +70,13 @@ export class Mousse{
 		});
 	}
 
-
-	private registerWS(pattern : string, options : WebSocketOptions, handler : PassiveContextHandler<any>){
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handler 
+	 * @param options 
+	 */
+	private registerWS(pattern : string, handler : PassiveContextHandler<any>, options? : WSRouteOptions){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -80,14 +87,11 @@ export class Mousse{
 
 		// Match params one time to avoid doing it in realtime everytime we build a context
 		const params = pattern.match(/:[\w]+/g) ?? [];
-		let wrappedWebSocket : WebSocket;
-		// ! TODO Warning, won't work, context and wrappedWebSocket are shared amoung connections ! Attach them to websocket user data ?
-		// ! How keeping websocket trace
 
 		this._app.ws(pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				const context = new Context(ureq, ures, pattern, params, this, true, wsc);
+				const context = new Context(ureq, ures, pattern, params, this, true, false, wsc, options?.maxBackPressure);
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++) 
@@ -96,7 +100,7 @@ export class Mousse{
 					// Handler might be default one which won't do anything
 					await handler(context);
 
-					// Upgrade
+					// Upgrade (will populate user data with useful data)
 					if(!context.ended && context.upgradable && context.upgraded)
 						context.upgrade();
 				} catch(e) {
@@ -118,8 +122,8 @@ export class Mousse{
 					if(handler)
 						handler(ws);
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 			message: (ws: WebSocket, message, isBinary) => {
@@ -128,8 +132,8 @@ export class Mousse{
 					if(handler)
 						handler(ws, message, isBinary);
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}				
 			},
 			ping: (ws, message) => {
@@ -138,8 +142,8 @@ export class Mousse{
 					if(handler)
 						handler(ws, message);
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 			pong: (ws, message) => {
@@ -148,8 +152,8 @@ export class Mousse{
 					if(handler)
 						handler(ws, message);
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 			dropped: (ws, message, isBinary) => {
@@ -158,8 +162,8 @@ export class Mousse{
 					if(handler)
 						handler(ws, message, isBinary);
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 			drain: (ws : WebSocket) => {
@@ -173,8 +177,8 @@ export class Mousse{
 					if(handler)
 						handler(ws);				
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 			close: (ws, code, message) => {
@@ -183,8 +187,8 @@ export class Mousse{
 					if(handler)
 						handler(ws, code, message);				
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e);
+					if(this._wsErrorHandler)
+						this._wsErrorHandler(e);
 				}
 			},
 		})
@@ -234,15 +238,49 @@ export class Mousse{
 					this.registerHTTP(route.method, joinUri(pattern, route.pattern), route.handler);
 				}
 
-				// TODO REgister also ws
+				for(let j = 0; j < router.wsroutes.length; j++){
+					const wsroute = router.wsroutes[j];
+					this.registerWS(joinUri(pattern, wsroute.pattern), wsroute.handler, wsroute.options);
+				}
 			}
 			else
 				this._middlewares.push({pattern, handler : handlers[i] as PassiveContextHandler<CT>})
 		}
 	}
 
-	// TODO ws method similar to add
+	/**
+	 * 
+	 * @param pattern 
+	 * @param args 
+	 * @returns 
+	 */
+	ws<CT extends ContextTypes>(pattern: string, ...args : [WSRouteOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
+		if(args.length < 1){
+			this.registerWS(pattern, () => {});
+		}
+		else if(args.length == 1 && typeof args[0] === "function"){
+			this.registerWS(pattern, args[0]);
+		}
+		else if(args.length == 1 && typeof args[0] !== "function"){
+			this.registerWS(pattern, () => {}, args[0]);
+		}
+		else if(args.length > 1){
+			const handler = args.pop() as PassiveContextHandler<CT>;
+			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
+			this.use(pattern, ...(args as PassiveContextHandler<CT>[]));
+			this.registerWS(pattern, handler, options);
+		}
 
+		return this;
+	}
+
+	/**
+	 * 
+	 * @param method 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	add<CT extends ContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
 		if(handlers.length < 1)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
@@ -259,26 +297,81 @@ export class Mousse{
 		return this;
 	}
 
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	any<CT extends ContextTypes>(pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
 		return this.add<CT>('any', pattern, ...handlers);
 	}
 
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	del<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
 		return this.add<CT>('del', pattern, ...handlers);
 	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	get<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('get', pattern, ...handlers);
 	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	head<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('head', pattern, ...handlers);
 	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	options<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('options', pattern, ...handlers);
 	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	post<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
 		return this.add<CT>('post', pattern, ...handlers);
 	}
 
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
+	patch<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+		return this.add<CT>('patch', pattern, ...handlers);
+	}
+
+	/**
+	 * 
+	 * @param port 
+	 * @param callback 
+	 */
 	listen(port : number, callback? : (listenSocket : uWSListenSocket | false) => void | Promise<void>){
 		if(this._listenSocket)
 			throw new Error('Mousse Instance is already listening');
@@ -293,6 +386,9 @@ export class Mousse{
 		});
 	}
 
+	/**
+	 * 
+	 */
 	stop(){
 		if(this._listenSocket){
 			uWSListenSocketClose(this._listenSocket)
