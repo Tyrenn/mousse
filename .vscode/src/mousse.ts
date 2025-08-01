@@ -1,7 +1,7 @@
-import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket} from 'uWebSockets.js';
+import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose} from 'uWebSockets.js';
 import { ErrorHandler } from './errorhandler';
 import { HTTPRouteMethod, Middleware, RouteMethod, Router } from './router';
-import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler } from './context';
+import { ActiveHTTPContextHandler, HTTPContext, HTTPContextTypes, PassiveHTTPContextHandler } from './httpcontext';
 import { joinUri } from './utils';
 export type MousseOptions = uWSAppOptions & {
 
@@ -13,9 +13,11 @@ export class Mousse{
 
 	private _errorHandler : ErrorHandler | undefined;
 
-	private _defaultHandler : ActiveContextHandler<any> | undefined;
+	private _defaultHandler : ActiveHTTPContextHandler<any> | undefined;
 
 	private _middlewares : Middleware<any>[];
+
+	private _listenSocket : uWSListenSocket | undefined;
 
 	contructor(options? : uWSAppOptions){
 		this._app = uWSApp(options);
@@ -27,7 +29,7 @@ export class Mousse{
 	 * @param pattern 
 	 * @param handler 
 	 */
-	private register(method : HTTPRouteMethod, pattern : string, handler : ActiveContextHandler<any>){
+	private register(method : HTTPRouteMethod, pattern : string, handler : ActiveHTTPContextHandler<any>){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -40,7 +42,7 @@ export class Mousse{
 		const params = pattern.match(/:[\w]+/g) ?? [];
 
 		this._app[method](pattern, async (ures, ureq) => {
-			const context = new Context(ureq, ures, pattern, params, this);
+			const context = new HTTPContext(ureq, ures, pattern, params, this);
 			let res : any = undefined;
 
 			try{
@@ -66,9 +68,6 @@ export class Mousse{
 	}
 
 
-	
-
-
 	/**
 	 * 
 	 * @param errorHandler 
@@ -86,14 +85,14 @@ export class Mousse{
 	 * @param defaultHandler 
 	 * @returns 
 	 */
-	setDefaultHandler(defaultHandler : ActiveContextHandler<any> | undefined){
+	setDefaultHandler(defaultHandler : ActiveHTTPContextHandler<any> | undefined){
 		this._defaultHandler = defaultHandler;
 
 		return this;
 	}
 
 
-	use<CT extends ContextTypes>(pattern : string, ...handlers : Array<PassiveContextHandler<CT> | Router<CT>>){
+	use<CT extends HTTPContextTypes>(pattern : string, ...handlers : Array<PassiveHTTPContextHandler<CT> | Router<CT>>){
 		if(handlers.length < 1)
 			throw new Error(`At least one handler is required in 'use' for pattern ${pattern}`);
 		
@@ -113,12 +112,12 @@ export class Mousse{
 				}
 			}
 			else
-				this._middlewares.push({pattern, handler : handlers[i] as PassiveContextHandler<CT>})
+				this._middlewares.push({pattern, handler : handlers[i] as PassiveHTTPContextHandler<CT>})
 		}
 	}
 
 
-	add<CT extends ContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
+	add<CT extends HTTPContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]){
 		if(handlers.length < 1)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
 
@@ -126,38 +125,52 @@ export class Mousse{
 			this.register(method, pattern, handlers[0]);
 		else{
 			// Last one is always an ActiveContextHandler
-			const handler : ActiveContextHandler<CT> = handlers.pop() as ActiveContextHandler<CT>;
-			this.use(pattern, ...(handlers as PassiveContextHandler<CT>[]));
+			const handler : ActiveHTTPContextHandler<CT> = handlers.pop() as ActiveHTTPContextHandler<CT>;
+			this.use(pattern, ...(handlers as PassiveHTTPContextHandler<CT>[]));
 			this.register(method, pattern, handler);
 		}
 
 		return this;
 	}
 
-	any<CT extends ContextTypes>(pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
+	any<CT extends HTTPContextTypes>(pattern : string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]){
 		return this.add<CT>('any', pattern, ...handlers);
 	}
 
-	del<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+	del<CT extends HTTPContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) { 
 		return this.add<CT>('del', pattern, ...handlers);
 	}
-	get<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	get<CT extends HTTPContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
 		return this.add<CT>('get', pattern, ...handlers);
 	}
-	head<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	head<CT extends HTTPContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
 		return this.add<CT>('head', pattern, ...handlers);
 	}
-	options<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	options<CT extends HTTPContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) {
 		return this.add<CT>('options', pattern, ...handlers);
 	}
-	post<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+	post<CT extends HTTPContextTypes>(pattern: string, ...handlers : [...PassiveHTTPContextHandler<CT>[], ActiveHTTPContextHandler<CT>]) { 
 		return this.add<CT>('post', pattern, ...handlers);
 	}
 
-	listen(port : number, callback? : (listenSocket : us_listen_socket | false) => void | Promise<void>){
+	listen(port : number, callback? : (listenSocket : uWSListenSocket | false) => void | Promise<void>){
+		if(this._listenSocket)
+			throw new Error('Mousse Instance is already listening');
+		
 		if(this._defaultHandler)
 			this.register('any', '/*', this._defaultHandler);
 		
-		this._app.listen(port, callback ?? (() => {}));
+		this._app.listen(port, (ls) => {
+			this._listenSocket = ls;
+			if(callback)
+				callback(ls);
+		});
+	}
+
+	stop(){
+		if(this._listenSocket){
+			uWSListenSocketClose(this._listenSocket)
+			this._listenSocket = undefined;
+		}
 	}
 }

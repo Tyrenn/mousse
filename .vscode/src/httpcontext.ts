@@ -1,40 +1,21 @@
-import { getParts, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse } from 'uWebSockets.js';
+import { getParts, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, WebSocket, us_socket_context_t as uWSSocketContext } from 'uWebSockets.js';
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import { Mousse } from './mousse';
+import { parseQuery } from './utils';
 
-// ? Should change for httpcontext handler in comparison to middleware handlers
-export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
-export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
+export type ActiveHTTPContextHandler<Types extends HTTPContextTypes> = (context: HTTPContext<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
+export type PassiveHTTPContextHandler<Types extends HTTPContextTypes> = (context: HTTPContext<Types["Body"]>) => void | Promise<void>;
 
-function parseQuery(query: string){
-	const result: Record<string, string | string[]> = {};
-	const parts = query.split('&');
 
-	for(const p of parts){
-		const [k, v] = p.split('=');
-		const dkey = decodeURIComponent(k);
-		const key = dkey.slice(-2) === '[]' ? dkey.slice(0, -2) : dkey;
-		const val = decodeURIComponent(v);
-		
-		if (result[key] === undefined) 
-			result[key] = val;
-		else if (Array.isArray(result[key]))
-			result[key].push(val);
-		else 
-			result[key] = [result[key], val];
-	}
 
-	return result;
-}
-
-export type ContextTypes = {
+export type HTTPContextTypes = {
 	Body? : any;
 	Response? : any;
 }
 
-export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
+export class HTTPContext<Types extends HTTPContextTypes = {Body : any, Response : any}>{
 
 	ureq : uHttpRequest;
 
@@ -406,22 +387,4 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 			this.status(404).send('Not found');
 		}
 	}
-
-
-	// ? USEFUL ?
-   /**
-     * This method allows you to throw an error which will be caught by the global error handler.
-   */
-	// throw(error : Error | string) {
-	// 	if (this._thrown) 
-	// 		return this;
-	// 	this._thrown = true;
-
-	// 	if (!(error instanceof Error)) 
-	// 		error = new Error(error);
-
-	// 	// ? THROW OR USE ERROR HANDLER ?
-
-	// 	return this;
-	// }
 }
