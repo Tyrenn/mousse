@@ -1,20 +1,24 @@
-# Mousse : Let the Deno play with bubbles 
+> **WARNING** : This is a work in progress as I rewrite all the code base, no package is yet available
+
+# Mousse : Let us play with bubbles 
 
 ![tag](https://img.shields.io/badge/version-1.0.0-0082B4.svg)
-[![tag](https://img.shields.io/badge/deno->=1.0.0-brightgreen.svg)](https://github.com/denoland/deno)
-[![tag](https://img.shields.io/badge/std-0.79.0-brightgreen.svg)](https://github.com/denoland/deno)
 ![tag](https://img.shields.io/badge/licence-MIT-9cf.svg)
 
 <img align="right" src=./examples/res/logo.svg height="150px">
 
-Mousse is a Deno web server framework developed in typescript. It provides simple ways to route http requests and handle websockets or server-sent events. Inspired by widespread framework like expressJS, it uses a similar structure based on middlewares and handlers. This Deno framework was largely inspired by [abc](https://deno.land/x/abc@v1.2.0), [oak](https://oakserver.github.io/oak/) and [expressJS](https://expressjs.com/).
+Mousse is a NodeJS web server framework developed in typescript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route http requests and handle websockets or server-sent events. It uses a middlewares-based structure and handlers as inspired by [hyper-expess](https://github.com/kartikk221/hyper-express), [mesh](https://github.com/ionited/mesh) and [expressJS](https://expressjs.com/).
 
-> In french Mousse refers to soap foam, composed of thousands of requests bubbles ☁️☁️ 
+> In french Mousse refers to soap foam, composed of thousands bubbles : the requests ☁️☁️ 
 
 ## Quick Start
 
+```bash
+npm install --save "mousse"
+```
+
 ```ts
-import { Mousse } from "https://github.com/Tyrenn/mousse/raw/main/mod.ts"
+import { Mousse } from "mousse"
 
 let mousse = new Mousse({port : 8080});
 
@@ -55,7 +59,8 @@ mousse.get("/dynamicpath/:myparam", (c) => { console.log("Dynamic " + c.params["
 
 A Handler must take a ```Context``` object like a ```HTTPContext``` as first argument and may take a second argument which will be a the next function.
 
-The next function is useful in case you want to control the context flow. By default, the context will pass through each handler one after another. You can change this default behavior by introducing a second argument in your handler. If a handler contains a second argument, the context will get through the following handler only if this second argument is called.
+> *** WIP ***
+
 
 ```ts
 let globalbool : Boolean = false;
@@ -98,93 +103,7 @@ mousse.use("myRouterpath/", myRouter).start();;
 
 Before being routed and processed, each request to the server is converted into a Context object which type depends on the request type. Three different Context type exists : HTTPContext, WSContext and SSEContext. Each Context type proposes dedicated utility functions. All Context types also share common utility functions.
 
-```
-mousse;                         // Get mousse app that as created the context                    
-id;                             // Get context ID
-request;                        // The request recieved by the mousse app
-method;                         // The context method which might differs from request method if context is sustained or upgraded
-params;                         // URI parameters /:param1/:param2
-url;                            // The requested URL
-data;                           // Data field to store any kind of object
-cookies;                        // Get cookies
-upgradable;                     // Boolean to know if context is upgradable (i.e. converted into WSContext)
-sustainable;                    // Boolean to know if context is sustainable (i.e. converted into SSEContext)
-answered                        // Boolean to know if context has been answered : response has been sent or context were upgraded/sustained
-
-upgrade();                      // Upgrade Context to WSContext if possible
-sustain();                      // Sustain Context to SSEContext if possible
-dispatchEvent(event);           // Send event to the Context's event target
-in(roomname?);                   // Get All Websockets and SSE Targets present in roomname
-on(type, listener, options?);    // Add an event listener to the Context's event target
-off(type, listener, options?);   // Remove an event listener to the Context's event target
-setCookie(cookie);              // Utility method to set cookie
-```
-
-In order to pass data between handlers in the same route, each Context object are template objects ```Context<typeof data>``` where data can be any type and accessed through the ```context.data``` property.
-When working in typescript, you can specify data type by using template on the registration methods : ```add```, ```get```, ```post```, ```ws``` etc.
-
-Here is an example where template are used on HTTPContext to pass a typed as string data.
-
-```ts
-mousse.get<HTTPContext<string>>("/", 
-  (context : HTTPContext<string>) => {
-    context.data = "Hello Mousse !";
-  },
-  (c) => {
-    console.log(c.data);
-  });
-
-```
-
-### HTTPContext<>
-
-HTTPContext represents the majority of requests flow. Whenever a request isn't upgraded as a Websocket or sustained as a Server Sent Event, it gets through routers as an HTTPContext. Working with an HTTPContext allow the use of additionnal utility functions.
-
-```js
-  response?;                          // Accessor to the response object
-
-  respond(res?);                      // Send the response
-  string(data, code?);                // Set a string data as response
-  json(data, code?);                  // Set a json data as response
-  html(data, code?);                  // Set a html data as response
-  blob(data, contentType?, code?);    // Set a blob of data as response
-  file(filepath);                     // Set a file as response
-  renderFile(filepath);               // Read and render a file content as response using the app renderer
-  render(extensionType, data);        // Render data of type "extensionType" as response using the app renderer
-  redirect(url, code?);               // Redirect the context
-```
-
-> WARNING : By default, if not answered, the app call the function respond at the end of handler process. Do not call this function prematuraly unless needed as its slows down request process for an obscure reason.
-
-### WSContext<>
-
-WSContext are WebSocket Context type, meaning upgraded "GET" HTTPContext. As such, a WSContext is no longer providing HTTPContext methods but rather proper WebSocket utility methods.
-
-```
-websocket?;                           // The websocket if it exists
-
-join(roomname);                       // Add WSContext to roomname
-quit(roomname);                       // Remove WSContext from roomname
-send(data);                           // Send string or Uint8Array data to WebSocket
-ping(data);                           // Ping WebSocket
-close(closeEvent);                    // Close WebSocket
-```
-
-It exists 2 ways to obtain a WSContext; register a handler using Router or Mousse object ```.ws(path, ...handlers)``` method or "manually" call ```.upgrade()``` on an HTTPContext inside a ```GET``` handler. See section "WebSockets" for further details.
-
-### SSEContext<>
-
-SSEContext are Server-Sent Event Context type, meaning sustained "GET" HTTPContext. As such, a SSEContext is no longer providing HTTPContext methods but rather proper Server-Sent Event utility methods.
-
-```
-join(roomname);       // Add SSEContext to roomname
-quit(roomname);       // Remove SSEContext from roomname
-send(data);           // Send string or Uint8Array or ServerSentEvent data to client
-close(closeEvent);    // Close connection
-```
-
-As for WSContext, it exists 2 way to obtain a SSEContext; register a handler using Router or mousse object ```.sse(path, ...handlers)``` method or "manually" call ```.sustain()``` on an HTTPContext inside a ```GET``` handler. See section "Server-Sent Events" for further details.
-
+> *** WIP ***
 
 ## WebSockets
 
@@ -208,43 +127,7 @@ mousse.ws("/websocket",
 
 To be able to manage the all upgrade workflow, you can also create WebSockets routes using classic ```GET``` routes and the ```upgrade()``` method. This gives you more control. You can either declare the context as SSEContext and call ```upgrade()``` method on it or get the WSContext returned from ```upgrade()``` method called on a HTTPContext.
 
-```ts
-mousse.get("/websocketOtherWay1",
-  (context : WSContext) => {
-    if(context.upgradable)
-      context.upgrade(); //Upgrade context request
-  }
-)
-
-mousse.get("/websocketOtherWay2",
-  (context : HTTPContext) => {
-    let wscontext : WSContext;
-    if(context.upgradable)
-      wscontext = context.upgrade(); //Upgrade context and get a wscontext object from it
-    //context is HTTPContext => do not use it anymore
-    //wscontext is WSContext
-  }
-)
-```
-
-> NOTE : upgrade() won't affect context if not upgradable.
-> WARNING : please follow those 3 ways to create and manage WebSockets route as unexepected behavior might occurs otherwise.
-
-Once you have a WSContext object you can register eventlistener on classic WebSockets event i.e. : ```text```, ```binary```, ```ping``` and ```close``` and also send messages to client.
-
-```ts
-mousse.ws("/websocket",
-  (context : WSContext) => {
-     context.on("text", (data) => {
-        console.log(data);
-        context.send(new Date() + " : " + data) // send the date and data to client
-     });
-     context.on("close", () => {
-      console.log("Connection closed");
-     })
-	}
-);
-```
+> *** WIP ***
 
 ## Server-Sent Events
 
@@ -316,6 +199,6 @@ This feature inspired by the SocketIO room system is useful in many cases such a
 
 > Disclaimer Even though i'm proud of this first version, it represents one of my first public, ambitious and typescript based module. Many improvements needs to be done and will be, I hope.
 
-I haven't yet decided a clear procedure to contibute to this module. I guess the main contribution you can make for now is test it and open issues to help me chase the bugs. I will try to fix them as fast as I can while thinking of better implementation for performance gain and new handy features. If this package begins to get big attention, I might invite most interested people to participate in its design and development.
+I haven't yet decided a clear procedure to contibute to this package. I guess the main contribution you can make for now is test it and open issues to help me chase the bugs. I will try to fix them as fast as I can while thinking of better implementation for performance gain and new handy features. If this package begins to get big attention, I might invite most interested people to participate in its design and development.
 
 Note that further improvements regarding documentation are coming.
