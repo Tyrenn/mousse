@@ -153,6 +153,16 @@ export class Router<DefaultContextTypes extends ContextTypes = any>{
 	 * @param handlers 
 	 * @returns 
 	 */
+	sse<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+		return this.get<CT>(pattern, (c) => c.sustain(), ...handlers);
+	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
 	head<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('head', pattern, ...handlers);
 	}

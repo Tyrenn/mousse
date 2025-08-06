@@ -12,3 +12,13 @@ Routes can have their path modified !
 // Documentor 
 // => Create documentation from App
 // => based on schema provided
+
+
+=> Give Routes options depending on method used
+=> Meaning changing add signature depending on method
+
+
+Mousse options:
+=> Serializer
+=> Default response headers
+=> 

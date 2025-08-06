@@ -4,7 +4,8 @@ import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import { Mousse } from './mousse';
 import { parseQuery } from './utils';
-import { Logger } from './logger';
+import { HTTPRouteMethod } from './router';
+import { Serializer } from './serializer';
 
 export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
 export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
@@ -39,6 +40,8 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	// The mousse instance that has created the context
 	private _mousse : Mousse;
 
+	private _serializer : Serializer<any>;
+
 //// *
 // * Request related attributes 
 //// *
@@ -46,14 +49,17 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	// uWebSocket.js request
 	private _ureq : uHttpRequest;
 
+	// Method
+	private _method? : HTTPRouteMethod;
+
 	// The route pattern 
 	private _route : string;
 
-	// Parsed body value
-	private _bodyParsed: { [key: string]: any } | null = null;
+	// Promise olding the body parsing resolution
+	private _bodyRaw? : Buffer;
 
-	// Raw body value
-	private _bodyRaw: Buffer | null = null;
+
+	private _bodyParsed? : Types["Body"];
 
 	// Populated param
 	private _params: Record<string, string> = {};
@@ -110,15 +116,20 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	private _maxBackPressure : number;
 
 
-	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], upgradable : boolean, sustainable : boolean, socketContext? : uWSSocketContext, maxBackPressure? : number) {
+	constructor(mousse : Mousse, serializer : Serializer<any>, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], upgradable : boolean, method? : HTTPRouteMethod, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
+		this._mousse = mousse;
+		this._serializer = serializer;
+
 		this._ureq = req;
 		this._ures = res;
+		this._method = method;
 		this._route = route;
-		this._mousse = mousse;
 
 		this._upgradable = upgradable;
-		this._socketContext = socketContext;
-		this._maxBackPressure = maxBackPressure ?? 16 * 1024; // 16kb default
+		this._socketContext = ws?.socket;
+		this._maxBackPressure = ws?.maxBackPressure ?? 16 * 1024; // 16kb default
+
+		this._sustainable = !!method && (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method);
 
 		// Populate params
 		for (let i = 0; i < params.length; i++)
@@ -158,40 +169,42 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 // * REQUEST METHODS
 //// *
 
-	/**
-	 * Gather all body data
-	 * @param res 
-	 * @returns 
-	 */
-	private async _getBodyRaw(res: uHttpResponse): Promise<Buffer> {
-		let buffer: Buffer;
-
-		return new Promise(resolve => res.onData(
-			(ab, isLast) => {
-				const chunk = Buffer.from(ab);
-
-				if (isLast) {
-					if (buffer) 
-						resolve(Buffer.concat([buffer, chunk]));
-					else 
-						resolve(chunk);
-				} else {
-					if (buffer) 
-						buffer = Buffer.concat([buffer, chunk]);
-					else 
-						buffer = Buffer.concat([chunk]);
-				}
-			}
-		));
+	get request(){
+		return this._ureq;
 	}
+	
+	get route(){
+		return this._route;
+	}
+
+
+	private async _getBodyRaw(res : uHttpResponse): Promise<Buffer>{
+		let buffer : Buffer;
+
+		return new Promise(resolve => res.onData((ab, isLast) => {
+			const chunk = Buffer.from(ab);
+
+			if (isLast) {
+				if (buffer) 
+					resolve(Buffer.concat([buffer, chunk]));
+				else 
+					resolve(chunk);
+			} else {
+				if (buffer) 
+					buffer = Buffer.concat([buffer, chunk]);
+				else 
+					buffer = Buffer.concat([chunk]);
+			}
+		}));
+	};
 
 	/**
 	 * Parse body based on contentType
 	 * @param body 
 	 * @returns 
 	 */
-	private _parseBodyRaw(contentType : string, body? : Buffer<ArrayBufferLike>){
-		if(!body?.length)
+	private _parseBodyRaw(contentType? : string, body? : Buffer<ArrayBufferLike>){
+		if(!contentType || !body?.length)
 			return {};
 
 		if(contentType === 'application/json'){
@@ -221,37 +234,27 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 		return body;
 	}
 
-	get request(){
-		return this._ureq;
-	}
-	
-	get route(){
-		return this._route;
-	}
-
 	/**
 	 * 
 	 * @param raw 
 	 */
-	async body(raw : true) : Promise<Buffer>;
+	async body(raw : true) : Promise<Buffer | null>;
 	async body(raw? : false) : Promise<Types["Body"]>;
-	async body(raw? : boolean) : Promise<Types["Body"] | Buffer>  {
-		const contentType = this._ureq.getHeader('content-type');
-
-		// ? Should send an error ?
-		if (!contentType)
-			return {} as Types["Body"];
-
-		if(this._bodyParsed && !raw)
-			return this._bodyParsed as Types["Body"];
-
-		if(this._bodyRaw && raw)
+	async body(raw? : boolean) : Promise<Types["Body"] | Buffer | null>  {
+		if(!raw && this._bodyParsed)
+			return this._bodyParsed;
+		
+		if(raw && this._bodyRaw)
 			return this._bodyRaw;
 
+		if(!this._method || !(['post', 'put', 'patch'] as HTTPRouteMethod[]).includes(this._method))
+			return raw ? null : {} as Types["Body"];
+
+		const contentType = this._ureq.getHeader('content-type');
 		this._bodyRaw = await this._getBodyRaw(this._ures);
-		this._bodyParsed = this._parseBodyRaw(contentType);
-		
-		return raw ? this._bodyRaw : (this._bodyParsed ?? {}) as Types["Body"];
+		this._bodyParsed = await this._serializer.serializeBody(this._bodyRaw, contentType); // this._parseBodyRaw(contentType, this._bodyRaw);
+
+		return raw ? this._bodyRaw : ((this._bodyParsed ?? {}) as Types["Body"]);
 	}
 
 	/**
@@ -456,14 +459,14 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	 * @param status
 	 * @returns 
 	 */
-   json(body : Types["Body"], status? : {code : number, message? : string}) {
+   json(body : Types["Response"], status? : {code : number, message? : string}) {
 		if(this._upgraded)
 			return;
 
 		if(status)
 			this.status(status.code, status.message);
 
-		return this.header('content-type', 'application/json').respond(JSON.stringify(body));
+		return this.header('content-type', 'application/json').respond(this._serializer.serializeResponse(body));
    }
 
 

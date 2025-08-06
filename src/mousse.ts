@@ -1,12 +1,15 @@
-import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket, RecognizedString} from 'uWebSockets.js';
+import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, getParts} from 'uWebSockets.js';
 import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler';
 import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router';
 import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context';
-import { joinUri } from './utils';
+import { joinUri, parseQuery } from './utils';
 import { Logger } from './logger';
+import { Serializer } from './serializer';
+import { DefaultSerializer } from './serializer/default';
 //import { WebSocketOptions, WebSocket } from './websocket';
 export type MousseOptions = uWSAppOptions & {
 	logger? : Logger;
+	serializer? : Serializer<any>
 }
 
 export class Mousse{
@@ -25,10 +28,14 @@ export class Mousse{
 
 	private _logger : Logger | undefined;
 
+	private _serializer : Serializer<any>;
+
 	contructor(options? : MousseOptions){
 		this._app = uWSApp(options);
 		this._logger = options?.logger;
+		this._serializer = options?.serializer ?? new DefaultSerializer();
 	}
+
 
 	/**
 	 * Register a new route to uWebsocket App with an async handler iterating over matching middleware
@@ -36,7 +43,7 @@ export class Mousse{
 	 * @param pattern 
 	 * @param handler 
 	 */
-	private registerHTTP(method : HTTPRouteMethod, pattern : string, handler : ActiveContextHandler<any>){
+	private _registerHTTP(method : HTTPRouteMethod, pattern : string, handler : ActiveContextHandler<any>){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -46,10 +53,11 @@ export class Mousse{
 		}
 
 		// Match params one time to avoid doing it in realtime everytime we build a context
-		const params = pattern.match(/:[\w]+/g) ?? [];
+		const params = pattern.match(/:[\w]+/g) ?? []
 
 		this._app[method](pattern, async (ures, ureq) => {
-			const context = new Context(this, ureq, ures, pattern, params, false, (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method));
+			// The body is built in a promise handled by here
+			const context = new Context(this, this._serializer, ureq, ures, pattern, params, false, method);
 			let res : any = undefined;
 
 			try{
@@ -80,7 +88,7 @@ export class Mousse{
 	 * @param handler 
 	 * @param options 
 	 */
-	private registerWS(pattern : string, handler : PassiveContextHandler<any>, options? : WSRouteOptions){
+	private _registerWS(pattern : string, handler : PassiveContextHandler<any>, options? : WSRouteOptions){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -95,7 +103,7 @@ export class Mousse{
 		this._app.ws(pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				const context = new Context(this, ureq, ures, pattern, params, true, false, wsc, options?.maxBackPressure);
+				const context = new Context(this, this._serializer, ureq, ures, pattern, params, true, undefined, {socket : wsc, maxBackPressure : options?.maxBackPressure});
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++) 
@@ -223,6 +231,13 @@ export class Mousse{
 	}
 
 
+	setSerializer(serializer : Serializer<any>){
+		this._serializer = serializer;
+
+		return this;
+	}
+
+
 	/**
 	 * 
 	 * @param logger 
@@ -266,12 +281,12 @@ export class Mousse{
 				
 				for(let j = 0; j < router.routes.length; j++){
 					const route = router.routes[j];
-					this.registerHTTP(route.method, joinUri(pattern, route.pattern), route.handler);
+					this._registerHTTP(route.method, joinUri(pattern, route.pattern), route.handler);
 				}
 
 				for(let j = 0; j < router.wsroutes.length; j++){
 					const wsroute = router.wsroutes[j];
-					this.registerWS(joinUri(pattern, wsroute.pattern), wsroute.handler, wsroute.options);
+					this._registerWS(joinUri(pattern, wsroute.pattern), wsroute.handler, wsroute.options);
 				}
 			}
 			else
@@ -287,19 +302,19 @@ export class Mousse{
 	 */
 	ws<CT extends ContextTypes>(pattern: string, ...args : [WSRouteOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
 		if(args.length < 1){
-			this.registerWS(pattern, () => {});
+			this._registerWS(pattern, () => {});
 		}
 		else if(args.length == 1 && typeof args[0] === "function"){
-			this.registerWS(pattern, args[0]);
+			this._registerWS(pattern, args[0]);
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
-			this.registerWS(pattern, () => {}, args[0]);
+			this._registerWS(pattern, () => {}, args[0]);
 		}
 		else if(args.length > 1){
 			const handler = args.pop() as PassiveContextHandler<CT>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
 			this.use(pattern, ...(args as PassiveContextHandler<CT>[]));
-			this.registerWS(pattern, handler, options);
+			this._registerWS(pattern, handler, options);
 		}
 
 		return this;
@@ -317,12 +332,12 @@ export class Mousse{
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
 
 		if(handlers.length == 1)
-			this.registerHTTP(method, pattern, handlers[0]);
+			this._registerHTTP(method, pattern, handlers[0]);
 		else{
 			// Last one is always an ActiveContextHandler
 			const handler : ActiveContextHandler<CT> = handlers.pop() as ActiveContextHandler<CT>;
 			this.use(pattern, ...(handlers as PassiveContextHandler<CT>[]));
-			this.registerHTTP(method, pattern, handler);
+			this._registerHTTP(method, pattern, handler);
 		}
 
 		return this;
@@ -356,6 +371,16 @@ export class Mousse{
 	 */
 	get<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
 		return this.add<CT>('get', pattern, ...handlers);
+	}
+
+	/**
+	 * 
+	 * @param pattern 
+	 * @param handlers 
+	 * @returns 
+	 */
+	sse<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+		return this.get<CT>(pattern, (c) => c.sustain(), ...handlers);
 	}
 
 	/**
@@ -408,7 +433,7 @@ export class Mousse{
 			throw new Error('Mousse Instance is already listening');
 		
 		if(this._defaultHandler)
-			this.registerHTTP('any', '/*', this._defaultHandler);
+			this._registerHTTP('any', '/*', this._defaultHandler);
 		
 		this._app.listen(port, (ls) => {
 			this._listenSocket = ls;
