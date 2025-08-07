@@ -1,7 +1,7 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString} from 'uWebSockets.js';
 import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler.js';
 import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router.js';
-import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context.js';
+import { Handler, Context, ContextTypes, WebSocket, WSHandler, MiddlewareHandler, PATCHHandlers, POSTHandlers, PUTHandlers, GETHandlers, Handlers, DELHandlers, OPTIONSHandlers, HEADHandlers } from './context.js';
 import { joinUri, parseQuery } from './utils.js';
 import { Logger } from './logger.js';
 import { Serializer } from './serializer/index.js';
@@ -20,7 +20,7 @@ export class Mousse{
 	
 	private _wsErrorHandler : WebsocketEventErrorHandler | undefined;
 
-	private _defaultHandler : ActiveContextHandler<any> | undefined;
+	private _defaultHandler : Handler<any> | undefined;
 
 	private _middlewares : Middleware<any>[] = [];
 
@@ -57,7 +57,7 @@ export class Mousse{
 	 * @param pattern 
 	 * @param handler 
 	 */
-	private _registerHTTP(method : HTTPRouteMethod, pattern : string, handler : ActiveContextHandler<any>){
+	private _registerHTTP(method : HTTPRouteMethod, pattern : string, handler : Handler<any>){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -102,7 +102,7 @@ export class Mousse{
 	 * @param handler 
 	 * @param options 
 	 */
-	private _registerWS(pattern : string, handler : PassiveContextHandler<any>, options? : WSRouteOptions){
+	private _registerWS(pattern : string, handler : MiddlewareHandler<any>, options? : WSRouteOptions){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -238,7 +238,7 @@ export class Mousse{
 	 * @param defaultHandler 
 	 * @returns 
 	 */
-	setDefaultHandler(defaultHandler : ActiveContextHandler<any> | undefined){
+	setDefaultHandler(defaultHandler : Handler<any> | undefined){
 		this._defaultHandler = defaultHandler;
 
 		return this;
@@ -279,7 +279,7 @@ export class Mousse{
 	 * @param pattern 
 	 * @param handlers 
 	 */
-	use<CT extends ContextTypes>(pattern : string, ...handlers : Array<PassiveContextHandler<CT> | Router<CT>>){
+	use<CT extends ContextTypes>(pattern : string, ...handlers : Array<MiddlewareHandler<CT> | Router<CT>>){
 		if(handlers.length < 1)
 			throw new Error(`At least one handler is required in 'use' for pattern ${pattern}`);
 		
@@ -304,7 +304,7 @@ export class Mousse{
 				}
 			}
 			else
-				this._middlewares.push({pattern, handler : handlers[i] as PassiveContextHandler<CT>})
+				this._middlewares.push({pattern, handler : handlers[i] as MiddlewareHandler<CT>})
 		}
 	}
 
@@ -314,7 +314,7 @@ export class Mousse{
 	 * @param args 
 	 * @returns 
 	 */
-	ws<CT extends ContextTypes>(pattern: string, ...args : [WSRouteOptions | PassiveContextHandler<CT>, ...PassiveContextHandler<CT>[]]){
+	ws<CT extends ContextTypes>(pattern: string, ...args : [WSRouteOptions | WSHandler<CT>, ...WSHandler<CT>[]]){
 		if(args.length < 1){
 			this._registerWS(pattern, () => {});
 		}
@@ -325,9 +325,9 @@ export class Mousse{
 			this._registerWS(pattern, () => {}, args[0]);
 		}
 		else if(args.length > 1){
-			const handler = args.pop() as PassiveContextHandler<CT>;
+			const handler = args.pop() as MiddlewareHandler<CT>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
-			this.use(pattern, ...(args as PassiveContextHandler<CT>[]));
+			this.use(pattern, ...(args as MiddlewareHandler<CT>[]));
 			this._registerWS(pattern, handler, options);
 		}
 
@@ -341,7 +341,15 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	add<CT extends ContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
+	add<CT extends ContextTypes>(method : "patch", pattern : string, ...handlers : PATCHHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "post", pattern : string, ...handlers : POSTHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "put", pattern : string, ...handlers : PUTHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "get", pattern : string, ...handlers : GETHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "head", pattern : string, ...handlers : HEADHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "options", pattern : string, ...handlers : OPTIONSHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "del", pattern : string, ...handlers : DELHandlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : "any", pattern : string, ...handlers : Handlers<CT>) : Mousse;
+	add<CT extends ContextTypes>(method : HTTPRouteMethod, pattern : string, ...handlers : Handlers<CT>){
 		if(handlers.length < 1)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
 
@@ -349,8 +357,8 @@ export class Mousse{
 			this._registerHTTP(method, pattern, handlers[0]);
 		else{
 			// Last one is always an ActiveContextHandler
-			const handler : ActiveContextHandler<CT> = handlers.pop() as ActiveContextHandler<CT>;
-			this.use(pattern, ...(handlers as PassiveContextHandler<CT>[]));
+			const handler : Handler<CT> = handlers.pop() as Handler<CT>;
+			this.use(pattern, ...(handlers as MiddlewareHandler<CT>[]));
 			this._registerHTTP(method, pattern, handler);
 		}
 
@@ -363,7 +371,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	any<CT extends ContextTypes>(pattern : string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]){
+	any<CT extends ContextTypes>(pattern : string, ...handlers : Handlers<CT>){
 		return this.add<CT>('any', pattern, ...handlers);
 	}
 
@@ -373,7 +381,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	del<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+	del<CT extends ContextTypes>(pattern: string, ...handlers : DELHandlers<CT>) { 
 		return this.add<CT>('del', pattern, ...handlers);
 	}
 
@@ -383,7 +391,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	get<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	get<CT extends ContextTypes>(pattern: string, ...handlers : GETHandlers<CT>) {
 		return this.add<CT>('get', pattern, ...handlers);
 	}
 
@@ -393,7 +401,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	sse<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	sse<CT extends ContextTypes>(pattern: string, ...handlers : GETHandlers<CT>) {
 		return this.get<CT>(pattern, (c) => c.sustain(), ...handlers);
 	}
 
@@ -403,7 +411,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	head<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	head<CT extends ContextTypes>(pattern: string, ...handlers : HEADHandlers<CT>) {
 		return this.add<CT>('head', pattern, ...handlers);
 	}
 
@@ -413,7 +421,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	options<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
+	options<CT extends ContextTypes>(pattern: string, ...handlers : OPTIONSHandlers<CT>) {
 		return this.add<CT>('options', pattern, ...handlers);
 	}
 
@@ -423,7 +431,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	post<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+	post<CT extends ContextTypes>(pattern: string, ...handlers : POSTHandlers<CT>) { 
 		return this.add<CT>('post', pattern, ...handlers);
 	}
 
@@ -433,7 +441,7 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	patch<CT extends ContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) { 
+	patch<CT extends ContextTypes>(pattern: string, ...handlers : PATCHHandlers<CT>) { 
 		return this.add<CT>('patch', pattern, ...handlers);
 	}
 

@@ -7,9 +7,6 @@ import { parseQuery } from './utils.js';
 import { HTTPRouteMethod } from './router.js';
 import { Serializer } from './serializer/index.js';
 
-export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
-export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
-
 /**
  * Enhanced websocket
  */
@@ -34,7 +31,31 @@ export type ContextTypes = {
 	Response? : any;
 }
 
-export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
+
+export interface UpgradableContext{
+	upgradable : boolean;
+	upgraded : boolean;
+	wsEventHandlers : Partial<WebSocketEventHandlers>;
+	on : <Event extends keyof WebSocketEventHandlers>(type: Event, listener: WebSocketEventHandlers[Event]) => void;
+	off : <Event extends keyof WebSocketEventHandlers>(type : Event) => void;
+	onMessage : (listener : WebSocketEventHandlers["message"]) => void;
+	onClose : (listener : WebSocketEventHandlers["close"]) => void;
+	onDrain : (listener : WebSocketEventHandlers["drain"]) => void;
+	onDropped : (listener : WebSocketEventHandlers["dropped"]) => void;
+	onOpen : (listener : WebSocketEventHandlers["open"]) => void;
+	onPing : (listener : WebSocketEventHandlers["ping"]) => void;
+	onPong : (listener : WebSocketEventHandlers["pong"]) => void;
+	onSubscription : (listener : WebSocketEventHandlers["subscription"]) => void;
+	upgrade : () => void;
+};
+
+export interface SustainableContext{
+	sustain : () => void;
+	sustained : boolean;
+	send : (data : string | object) => void;
+}
+
+export class Context<Types extends ContextTypes = {Body : any, Response : any}> implements UpgradableContext, SustainableContext{
 
 
 	// The mousse instance that has created the context
@@ -197,42 +218,6 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 			}
 		}));
 	};
-
-	/**
-	 * Parse body based on contentType
-	 * @param body 
-	 * @returns 
-	 */
-	private _parseBodyRaw(contentType? : string, body? : Buffer<ArrayBufferLike>){
-		if(!contentType || !body?.length)
-			return {};
-
-		if(contentType === 'application/json'){
-			const bodyStr = body.toString();
-			return bodyStr ? JSON.parse(bodyStr) : {};
-		}
-
-		if(contentType === 'application/x-www-form-urlencoded'){
-			const bodyStr = body.toString();
-			return bodyStr ? parseQuery(bodyStr) : {};
-		}
-
-		if (contentType.startsWith('multipart/form-data')) {
-			const multiparts = getParts(body, contentType);
-			if(!multiparts) 
-				return {};
-			
-			const data: Record<string, string> = {};
-			for(const p of multiparts){
-				if (!p.type && !p.filename) 
-					data[p.name] = Buffer.from(p.data).toString();
-			}
-
-			return data;
-		}
-
-		return body;
-	}
 
 	/**
 	 * 
@@ -506,6 +491,10 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 // * SSE METHODS
 //// *
 
+	get sustained(){
+		return this._sustained;
+	}
+
 	sustain(){
 		if(this._ended || !this._sustainable)
 			throw new Error('Context is not sustainable');
@@ -617,3 +606,98 @@ export class Context<Types extends ContextTypes = {Body : any, Response : any}>{
 	// ? What about closing ws ??
 	// ? Should put every wrapper method in another websocket object ?
 }
+
+
+/**
+ * * HANDLERS TYPES
+ */
+
+
+type GenericHandler<
+	T extends ContextTypes,
+	C extends any,
+	Passive extends boolean = false
+> = (
+	context: C
+) => Passive extends true ? (void | Promise<void>) : (void | T["Response"] | Promise<void | T["Response"]>);
+
+/**
+ * General
+ */
+
+export type Handler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Context<Types>>;
+export type MiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Context<Types>, true>;
+
+export type Handlers<Types extends ContextTypes = {Body : any, Response : any}> = [...MiddlewareHandler<Types>[], Handler<Types>];
+
+
+/**
+ * WS handlers Types
+ */
+export type WSHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof SustainableContext>, true>;
+
+
+/**
+ * POST handlers Types
+ */
+export type POSTHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof UpgradableContext>>;
+
+export type POSTMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof UpgradableContext>, true>;
+
+export type POSTHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...POSTMiddlewareHandler<Types>[], POSTHandler<Types>];
+
+/**
+ * PUT handlers Types
+ */
+export type PUTHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
+
+export type PUTMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
+
+export type PUTHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...PUTMiddlewareHandler<Types>[], PUTHandler<Types>];
+
+/**
+ * PATCH handlers Types
+ */
+export type PATCHHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
+
+export type PATCHMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
+
+export type PATCHHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...PATCHMiddlewareHandler<Types>[], PATCHHandler<Types>];
+
+/**
+ * Head handlers Types
+ */
+export type HEADHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
+
+export type HEADMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
+
+export type HEADHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...HEADMiddlewareHandler<Types>[], HEADHandler<Types>];
+
+/**
+ * Options handlers Types
+ */
+export type OPTIONSHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
+
+export type OPTIONSMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
+
+export type OPTIONSHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...OPTIONSMiddlewareHandler<Types>[], OPTIONSHandler<Types>];
+
+/**
+ * Get
+ */
+export type GETHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types,Omit<Context<Types>, "body" | keyof UpgradableContext>>;
+
+export type GETMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types,Omit<Context<Types>, "body" | keyof UpgradableContext>, true>;
+
+export type GETHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...GETMiddlewareHandler<Types>[], GETHandler<Types>];
+
+
+/**
+ * DELETE Specific handlers
+ */
+export type DELHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
+
+export type DELMiddlewareHandler<Types extends ContextTypes = {Body : any, Response : any}> = GenericHandler<Types, Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
+
+export type DELHandlers<Types extends ContextTypes = {Body : any, Response : any}> = [...DELMiddlewareHandler<Types>[], DELHandler<Types>];
+
