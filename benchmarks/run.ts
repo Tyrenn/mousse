@@ -1,11 +1,13 @@
 import { ChildProcess, spawn } from 'child_process'
 import autocannon from 'autocannon'
+import { formatAutocannonResult } from './utils.js';
 
 const servers = [
-	{ name: 'fastify', host : "127.0.0.1", port: 3002, file: './dist/benchmarks/fastify.js' },
-	{ name: 'mousse', host: "127.0.0.1", port: 3000, file: './dist/benchmarks/mousse.js' },
+	{ name: 'uWebSocket', host: "localhost", port: 3000, file: './dist/benchmarks/uwebsocket.js' },
+	{ name: 'mousse', host: "localhost", port: 3000, file: './dist/benchmarks/mousse.js' },
 	{ name: 'express', host: "localhost", port: 3001, file: './dist/benchmarks/express.js' },
-	{ name: 'hyper-express', host: "localhost", port: 3003, file: './dist/benchmarks/hyper-express.js' },
+	{ name: 'fastify', host : "127.0.0.1", port: 3002, file: './dist/benchmarks/fastify.js' },
+	//{ name: 'hyper-express', host: "localhost", port: 3003, file: './dist/benchmarks/hyper-express.js' },
 ]
 
 const runServer : (path : string) => Promise<ChildProcess> = (file) => new Promise((resolve) => {
@@ -41,7 +43,7 @@ for (const server of servers) {
 	const proc = await runServer(server.file);
 	try {
 		const result = await runBenchmark(`http://${server.host}:${server.port}/hello`)
-		console.log(result)
+		console.log(formatAutocannonResult(result))
 	} catch (err) {
 		console.error(`Benchmark failed for ${server.name}:`, err)
 	} finally {
