@@ -1,5 +1,5 @@
-import { ActiveContextHandler, ContextTypes, PassiveContextHandler } from './context';
-import { joinUri } from './utils';
+import { ActiveContextHandler, ContextTypes, PassiveContextHandler } from './context.js';
+import { joinUri } from './utils.js';
 
 export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put' | 'patch';
 
@@ -74,7 +74,7 @@ export class Router<DefaultContextTypes extends ContextTypes = any>{
 			// Last one is always an ActiveContextHandler
 			const handler : ActiveContextHandler<CT> = handlers.pop() as ActiveContextHandler<CT>;
 			this.use(pattern, ...(handlers as PassiveContextHandler<CT>[]));
-			this._routes[method].push({pattern, handler});
+			this._routes.push({method, pattern, handler});
 		}
 
 		return this;
@@ -154,7 +154,7 @@ export class Router<DefaultContextTypes extends ContextTypes = any>{
 	 * @returns 
 	 */
 	sse<CT extends DefaultContextTypes>(pattern: string, ...handlers : [...PassiveContextHandler<CT>[], ActiveContextHandler<CT>]) {
-		return this.get<CT>(pattern, (c) => c.sustain(), ...handlers);
+		return this.get<CT>(pattern, (c : any) => c.sustain(), ...handlers);
 	}
 
 	/**

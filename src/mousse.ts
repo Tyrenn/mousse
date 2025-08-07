@@ -1,11 +1,11 @@
-import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, WebSocket as uWSWebSocket, RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, getParts} from 'uWebSockets.js';
-import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler';
-import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router';
-import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context';
-import { joinUri, parseQuery } from './utils';
-import { Logger } from './logger';
-import { Serializer } from './serializer';
-import { DefaultSerializer } from './serializer/default';
+import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString} from 'uWebSockets.js';
+import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler.js';
+import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router.js';
+import { ActiveContextHandler, Context, ContextTypes, PassiveContextHandler, WebSocketEventHandlers, WebSocket } from './context.js';
+import { joinUri, parseQuery } from './utils.js';
+import { Logger } from './logger.js';
+import { Serializer } from './serializer/index.js';
+import { DefaultSerializer } from './serializer/default.js';
 //import { WebSocketOptions, WebSocket } from './websocket';
 export type MousseOptions = uWSAppOptions & {
 	logger? : Logger;
@@ -22,7 +22,7 @@ export class Mousse{
 
 	private _defaultHandler : ActiveContextHandler<any> | undefined;
 
-	private _middlewares : Middleware<any>[];
+	private _middlewares : Middleware<any>[] = [];
 
 	private _listenSocket : uWSListenSocket | undefined;
 
@@ -30,8 +30,22 @@ export class Mousse{
 
 	private _serializer : Serializer<any>;
 
-	contructor(options? : MousseOptions){
-		this._app = uWSApp(options);
+	constructor(options? : MousseOptions){
+
+		// uWebsocket.js c++ binding are pretty sensitive ! Require to filter any undefined value
+		const filteredOptions: uWSAppOptions = {};
+		const allowedKeys : Array<keyof uWSAppOptions> = ["key_file_name","cert_file_name","ca_file_name","passphrase","dh_params_file_name","ssl_ciphers","ssl_prefer_low_memory_usage"] as const;
+
+		for (const key of allowedKeys) {
+			if (options && options[key] !== undefined) {
+				(filteredOptions as any)[key] = options[key]!;
+			}
+		}
+		if(Object.keys(filteredOptions).length > 0)
+			this._app = uWSApp(filteredOptions);
+		else
+			this._app = uWSApp();
+
 		this._logger = options?.logger;
 		this._serializer = options?.serializer ?? new DefaultSerializer();
 	}
@@ -193,7 +207,7 @@ export class Mousse{
 						this._wsErrorHandler(e);
 				}
 			},
-			close: (ws, code, message) => {
+			close: (ws : WebSocket, code, message) => {
 				try{
 					const handler = ws.getUserData().handlers.close;
 					if(handler)

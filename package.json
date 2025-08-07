@@ -1,26 +1,25 @@
 {
 	"name": "mousse",
+	"type": "module",
 	"version": "1.0.0",
-	"description": "![tag](https://img.shields.io/badge/version-1.0.0-0082B4.svg) [![tag](https://img.shields.io/badge/deno->=1.0.0-brightgreen.svg)](https://github.com/denoland/deno) [![tag](https://img.shields.io/badge/std-0.79.0-brightgreen.svg)](https://github.com/denoland/deno) ![tag](https://img.shields.io/badge/licence-MIT-9cf.svg)",
-	"main": "index.js",
 	"directories": {
 		"example": "examples"
 	},
+	"main": "./src",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"build": "tsc",
+		"check": "tsc --noEmit"
 	},
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
-		"@types/node": "^24.1.0",
-		"@types/uuid": "^10.0.0",
 		"mime-types": "^3.0.1",
-		"path-to-regexp": "^8.2.0",
-		"tsc": "^2.0.4",
-		"uuid": "^11.0.5",
 		"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0"
 	},
 	"devDependencies": {
-		"@types/mime-types": "^3.0.1"
+		"@types/mime-types": "^3.0.1",
+		"@types/node": "^24.1.0",
+		"tsc": "^2.0.4",
+		"typescript": "^5.9.2"
 	}
 }

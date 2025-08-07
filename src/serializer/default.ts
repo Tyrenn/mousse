@@ -1,6 +1,6 @@
 import { getParts } from 'uWebSockets.js';
-import { parseQuery } from '../utils';
-import { Serializer } from './index';
+import { parseQuery } from '../utils.js';
+import { Serializer } from './index.js';
 
 export class DefaultSerializer implements Serializer<any>{
 	serializeBody<Body extends any>(raw?: Buffer<ArrayBufferLike>, contentType?: string){

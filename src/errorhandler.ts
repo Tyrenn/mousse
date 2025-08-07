@@ -1,4 +1,4 @@
-import { Context } from "./context";
+import { Context } from "./context.js";
 
 export type ErrorHandler = (error: any, c? : Context<any>) => void | Promise<void>;
 

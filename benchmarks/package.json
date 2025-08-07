@@ -1,0 +1,23 @@
+{
+	"name": "@mousse/benchmarks",
+	"type": "module",
+	"private": true,
+	"main": "run.js",
+	"scripts": {
+		"benchmark": "tsc && node ./dist/benchmarks/run.js"
+	},
+	"dependencies": {
+		"autocannon": "^8.0.0",
+		"express": "^5.1.0",
+		"fastify": "^5.4.0",
+		"hyper-express": "^6.17.3",
+		"@types/express": "^5.0.3"
+	},
+	"devDependencies": {
+		"@types/autocannon": "^7.12.7",
+		"@types/busboy": "^1.5.4",
+		"@types/cross-spawn": "^6.0.6",
+		"@types/node": "^24.1.0",
+		"typescript": "5.9.2"
+	}
+}

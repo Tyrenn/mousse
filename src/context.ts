@@ -2,10 +2,10 @@ import { getParts, RecognizedString, HttpRequest as uHttpRequest, HttpResponse a
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
-import { Mousse } from './mousse';
-import { parseQuery } from './utils';
-import { HTTPRouteMethod } from './router';
-import { Serializer } from './serializer';
+import { Mousse } from './mousse.js';
+import { parseQuery } from './utils.js';
+import { HTTPRouteMethod } from './router.js';
+import { Serializer } from './serializer/index.js';
 
 export type ActiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void> | Types["Response"] | Promise<Types["Response"]>;
 export type PassiveContextHandler<Types extends ContextTypes> = (context: Context<Types["Body"]>) => void | Promise<void>;
