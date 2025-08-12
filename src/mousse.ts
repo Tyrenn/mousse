@@ -1,6 +1,6 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString} from 'uWebSockets.js';
 import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler.js';
-import { HTTPRouteMethod, Middleware, RouteMethod, Router, WSRouteOptions } from './router.js';
+import { HTTPRouteMethod, Middleware, RouteMethod, HTTPRouteOptions, Router, WSRouteOptions } from './router.js';
 import { Handler, Context, ContextTypes, WebSocket, WSHandler, MiddlewareHandler, PATCHHandlers, POSTHandlers, PUTHandlers, GETHandlers, Handlers, DELHandlers, OPTIONSHandlers, HEADHandlers } from './context.js';
 import { joinUri, parseQuery } from './utils.js';
 import { Logger } from './logger.js';
@@ -57,7 +57,7 @@ export class Mousse{
 	 * @param pattern 
 	 * @param handler 
 	 */
-	private _registerHTTP(method : HTTPRouteMethod, pattern : string, handler : Handler<any, any>){
+	private _registerHTTP(method : HTTPRouteMethod, pattern : string, handler : Handler<any, any>, options? : HTTPRouteOptions){
 		const appliedMiddlewares : Middleware<any>[] = [];
 
 		// Populate appliedMiddlewares based on their pattern 
@@ -71,7 +71,7 @@ export class Mousse{
 
 		this._app[method](pattern, async (ures, ureq) => {
 			// The body is built in a promise handled by here
-			const context = new Context(this, this._serializer, ureq, ures, pattern, params, false, method);
+			const context = new Context(this, options?.serializer ?? this._serializer, ureq, ures, pattern, params, false, method);
 			let res : any = undefined;
 
 			try{
@@ -295,7 +295,7 @@ export class Mousse{
 				
 				for(let j = 0; j < router.routes.length; j++){
 					const route = router.routes[j];
-					this._registerHTTP(route.method, joinUri(pattern, route.pattern), route.handler);
+					this._registerHTTP(route.method, joinUri(pattern, route.pattern), route.handler, route.options);
 				}
 
 				for(let j = 0; j < router.wsroutes.length; j++){
@@ -342,24 +342,39 @@ export class Mousse{
 	 * @returns 
 	 */
 	add<CT extends ContextTypes, EC extends any = {}>(method : "patch", pattern : string, ...handlers : PATCHHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "patch", pattern : string, options : HTTPRouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "post", pattern : string, ...handlers : POSTHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "post", pattern : string,  options : HTTPRouteOptions, ...handlers : POSTHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "put", pattern : string, ...handlers : PUTHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "put", pattern : string,  options : HTTPRouteOptions, ...handlers : PUTHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "get", pattern : string, ...handlers : GETHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "get", pattern : string,  options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "head", pattern : string, ...handlers : HEADHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "head", pattern : string,  options : HTTPRouteOptions, ...handlers : HEADHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "options", pattern : string, ...handlers : OPTIONSHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "options", pattern : string,  options : HTTPRouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "del", pattern : string, ...handlers : DELHandlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : "del", pattern : string,  options : HTTPRouteOptions, ...handlers : DELHandlers<CT, EC>) : Mousse;
 	add<CT extends ContextTypes, EC extends any = {}>(method : "any", pattern : string, ...handlers : Handlers<CT, EC>) : Mousse;
-	add<CT extends ContextTypes, EC extends any = {}>(method : HTTPRouteMethod, pattern : string, ...handlers : Handlers<CT, EC>){
-		if(handlers.length < 1)
+	add<CT extends ContextTypes, EC extends any = {}>(method : "any", pattern : string,  options : HTTPRouteOptions, ...handlers : Handlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : HTTPRouteMethod, pattern : string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>) : Mousse;
+	add<CT extends ContextTypes, EC extends any = {}>(method : HTTPRouteMethod, pattern : string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>){
+		if(args.length < 1)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
+		
+		if(typeof args[0] !== 'function' && args.length < 2)
+			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
+		
+		const options : HTTPRouteOptions | undefined = typeof args[0] !== "function" ? args.shift() as HTTPRouteOptions : undefined;
+		const handlers : Handlers<CT, EC> = args as Handlers<CT, EC>;
 
 		if(handlers.length == 1)
-			this._registerHTTP(method, pattern, handlers[0]);
+			this._registerHTTP(method, pattern, handlers[0], options);
 		else{
 			// Last one is always an ActiveContextHandler
 			const handler : Handler<CT, EC> = handlers.pop() as Handler<CT, EC>;
 			this.use(pattern, ...(handlers as MiddlewareHandler<CT, EC>[]));
-			this._registerHTTP(method, pattern, handler);
+			this._registerHTTP(method, pattern, handler, options);
 		}
 
 		return this;
@@ -371,8 +386,10 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	any<CT extends ContextTypes, EC extends any = {}>(pattern : string, ...handlers : Handlers<CT, EC>){
-		return this.add<CT, EC>('any', pattern, ...handlers);
+	any<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : Handlers<CT, EC>) : Mousse;
+	any<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : Handlers<CT, EC>) : Mousse;
+	any<CT extends ContextTypes, EC extends any = {}>(pattern : string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>){
+		return this.add<CT, EC>('any', pattern, ...args);
 	}
 
 	/**
@@ -381,8 +398,10 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	del<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : DELHandlers<CT, EC>) { 
-		return this.add<CT, EC>('del', pattern, ...handlers);
+	del<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : DELHandlers<CT, EC>) : Mousse; 
+	del<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : DELHandlers<CT, EC>) : Mousse; 
+	del<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...DELHandlers<CT, EC>] | DELHandlers<CT, EC>) { 
+		return this.add<CT, EC>('del', pattern, ...args);
 	}
 
 	/**
@@ -391,8 +410,10 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	get<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : GETHandlers<CT, EC>) {
-		return this.add<CT, EC>('get', pattern, ...handlers);
+	get<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Mousse;
+	get<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : GETHandlers<CT, EC>) : Mousse;
+	get<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
+		return this.add<CT, EC>('get', pattern, ...args);
 	}
 
 	/**
@@ -401,8 +422,16 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	sse<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : GETHandlers<CT, EC>) {
-		return this.get<CT, EC>(pattern, (c) => c.sustain(), ...handlers);
+	sse<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Mousse;
+	sse<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : GETHandlers<CT, EC>) : Mousse;
+	sse<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
+		const options : HTTPRouteOptions | undefined = typeof args[0] === "function" ? undefined : args.shift() as HTTPRouteOptions;
+		const handlers : GETHandlers<CT, EC> = args as GETHandlers<CT, EC>;
+		
+		if(options)
+			return this.get<CT, EC>(pattern, options, (c : any) => c.sustain(), ...handlers);
+		else
+			return this.get<CT, EC>(pattern, (c : any) => c.sustain(), ...handlers);
 	}
 
 	/**
@@ -411,8 +440,10 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	head<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : HEADHandlers<CT, EC>) {
-		return this.add<CT, EC>('head', pattern, ...handlers);
+	head<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : HEADHandlers<CT, EC>) : Mousse;
+	head<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : HEADHandlers<CT, EC>) : Mousse;
+	head<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...HEADHandlers<CT, EC>] | HEADHandlers<CT, EC>) {
+		return this.add<CT, EC>('head', pattern, ...args);
 	}
 
 	/**
@@ -421,8 +452,10 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	options<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : OPTIONSHandlers<CT, EC>) {
-		return this.add<CT, EC>('options', pattern, ...handlers);
+	options<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Mousse;
+	options<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : OPTIONSHandlers<CT, EC>) : Mousse;
+	options<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...OPTIONSHandlers<CT, EC>] | OPTIONSHandlers<CT, EC>) {
+		return this.add<CT, EC>('options', pattern, ...args);
 	}
 
 	/**
@@ -431,9 +464,12 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	post<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : POSTHandlers<CT, EC>) { 
-		return this.add<CT, EC>('post', pattern, ...handlers);
+	post<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : POSTHandlers<CT, EC>) : Mousse;
+	post<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : POSTHandlers<CT, EC>) : Mousse;
+	post<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...POSTHandlers<CT, EC>] | POSTHandlers<CT, EC>) { 
+		return this.add<CT, EC>('post', pattern, ...args);
 	}
+
 
 	/**
 	 * 
@@ -441,10 +477,11 @@ export class Mousse{
 	 * @param handlers 
 	 * @returns 
 	 */
-	patch<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : PATCHHandlers<CT, EC>) { 
-		return this.add<CT, EC>('patch', pattern, ...handlers);
+	patch<CT extends ContextTypes, EC extends any = {}>(pattern: string, options : HTTPRouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Mousse;
+	patch<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...handlers : PATCHHandlers<CT, EC>) : Mousse;
+	patch<CT extends ContextTypes, EC extends any = {}>(pattern: string, ...args : [HTTPRouteOptions, ...PATCHHandlers<CT, EC>] | PATCHHandlers<CT, EC>) { 
+		return this.add<CT, EC>('patch', pattern, ...args);
 	}
-
 	/**
 	 * 
 	 * @param port 

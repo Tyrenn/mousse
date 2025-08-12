@@ -6,7 +6,7 @@ export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post
 
 export type RouteMethod =  HTTPRouteMethod | 'ws';
 
-export interface RouteOptions {
+export interface HTTPRouteOptions {
 	schemas ? : {Body? : any, Response? : any};
 	serializer? : Serializer<any>;
 }
@@ -14,7 +14,7 @@ export interface RouteOptions {
 export interface HTTPRoute<CT extends ContextTypes, EC extends any = {}> {
 	method : HTTPRouteMethod;
 	pattern: string;
-	options? : RouteOptions;
+	options? : HTTPRouteOptions;
 	handler: Handler<CT, EC>;
 };
 
@@ -141,30 +141,30 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @returns 
 	 */
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "patch", pattern : string, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "patch", pattern : string, options : RouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "patch", pattern : string, options : HTTPRouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "post", pattern : string, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "post", pattern : string,  options : RouteOptions, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "post", pattern : string,  options : HTTPRouteOptions, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "put", pattern : string, ...handlers : PUTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "put", pattern : string,  options : RouteOptions, ...handlers : PUTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "put", pattern : string,  options : HTTPRouteOptions, ...handlers : PUTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "get", pattern : string, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "get", pattern : string,  options : RouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "get", pattern : string,  options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "head", pattern : string, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "head", pattern : string,  options : RouteOptions, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "head", pattern : string,  options : HTTPRouteOptions, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "options", pattern : string, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "options", pattern : string,  options : RouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "options", pattern : string,  options : HTTPRouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "del", pattern : string, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "del", pattern : string,  options : RouteOptions, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "del", pattern : string,  options : HTTPRouteOptions, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "any", pattern : string, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "any", pattern : string,  options : RouteOptions, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : HTTPRouteMethod, pattern : string, ...args : [RouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : HTTPRouteMethod, pattern : string, ...args : [RouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>){
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : "any", pattern : string,  options : HTTPRouteOptions, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : HTTPRouteMethod, pattern : string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	add<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(method : HTTPRouteMethod, pattern : string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>){
 		if(args.length < 1)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
 		
 		if(typeof args[0] !== 'function' && args.length < 2)
 			throw new Error(`Must provide at least one handler in route ${pattern} for method ${method}`);
 
-		const options : RouteOptions | undefined = typeof args[0] !== "function" ? args.shift() as RouteOptions : undefined;
+		const options : HTTPRouteOptions | undefined = typeof args[0] !== "function" ? args.shift() as HTTPRouteOptions : undefined;
 		const handlers : Handlers<CT, EC> = args as Handlers<CT, EC>;
 
 		if(handlers.length == 1)
@@ -185,9 +185,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	any<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	any<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	any<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : Handlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	any<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>) { 
+	any<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...Handlers<CT, EC>] | Handlers<CT, EC>) { 
 		return this.add<CT, EC>('any', pattern, ...args);
 	}
 
@@ -197,9 +197,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	del<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	del<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	del<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : DELHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	del<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...DELHandlers<CT, EC>] | DELHandlers<CT, EC>) { 
+	del<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...DELHandlers<CT, EC>] | DELHandlers<CT, EC>) { 
 		return this.add<CT, EC>('del', pattern, ...args);
 	}
 
@@ -209,9 +209,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	get<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	get<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	get<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	get<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
+	get<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
 		return this.add<CT, EC>('get', pattern, ...args);
 	}
 
@@ -221,10 +221,10 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : GETHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
-		const options : RouteOptions | undefined = typeof args[0] === "function" ? undefined : args.shift() as RouteOptions;
+	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
+		const options : HTTPRouteOptions | undefined = typeof args[0] === "function" ? undefined : args.shift() as HTTPRouteOptions;
 		const handlers : GETHandlers<CT, EC> = args as GETHandlers<CT, EC>;
 		
 		if(options)
@@ -239,9 +239,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	head<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	head<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	head<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : HEADHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	head<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...HEADHandlers<CT, EC>] | HEADHandlers<CT, EC>) {
+	head<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...HEADHandlers<CT, EC>] | HEADHandlers<CT, EC>) {
 		return this.add<CT, EC>('head', pattern, ...args);
 	}
 
@@ -251,9 +251,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	options<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	options<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	options<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : OPTIONSHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	options<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...OPTIONSHandlers<CT, EC>] | OPTIONSHandlers<CT, EC>) {
+	options<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...OPTIONSHandlers<CT, EC>] | OPTIONSHandlers<CT, EC>) {
 		return this.add<CT, EC>('options', pattern, ...args);
 	}
 
@@ -263,9 +263,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	post<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>; 
+	post<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>; 
 	post<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : POSTHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>; 
-	post<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...POSTHandlers<CT, EC>] | POSTHandlers<CT, EC>) { 
+	post<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...POSTHandlers<CT, EC>] | POSTHandlers<CT, EC>) { 
 		return this.add<CT, EC>('post', pattern, ...args);
 	}
 
@@ -275,9 +275,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	patch<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : RouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
+	patch<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
 	patch<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : PATCHHandlers<CT, EC>) : Router<DefaultContextTypes, DefaultExtendContext>;
-	patch<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [RouteOptions, ...PATCHHandlers<CT, EC>] | PATCHHandlers<CT, EC>) { 
+	patch<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...PATCHHandlers<CT, EC>] | PATCHHandlers<CT, EC>) { 
 		return this.add<CT, EC>('patch', pattern, ...args);
 	}
 }
