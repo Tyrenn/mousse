@@ -71,7 +71,7 @@ export class Mousse{
 
 		this._app[method](pattern, async (ures, ureq) => {
 			// The body is built in a promise handled by here
-			const context = new Context(this, options?.serializer ?? this._serializer, ureq, ures, pattern, params, false, method);
+			const context = new Context(this, ureq, ures, pattern, params, options?.serializer ?? this._serializer, {method, schemas : options?.schemas});
 			let res : any = undefined;
 
 			try{
@@ -117,7 +117,7 @@ export class Mousse{
 		this._app.ws(pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				const context = new Context(this, this._serializer, ureq, ures, pattern, params, true, undefined, {socket : wsc, maxBackPressure : options?.maxBackPressure});
+				const context = new Context(this, ureq, ures, pattern, params, this._serializer, undefined, {socket : wsc, maxBackPressure : options?.maxBackPressure});
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++) 

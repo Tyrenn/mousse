@@ -65,7 +65,6 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// The mousse instance that has created the context
 	private _mousse : Mousse;
 
-	private _serializer : Serializer<any>;
 
 //// *
 // * Request related attributes 
@@ -80,11 +79,14 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// The route pattern 
 	private _route : string;
 
-	// Promise olding the body parsing resolution
 	private _bodyRaw? : Buffer;
 
-
 	private _bodyParsed? : Types["Body"];
+
+	//
+	private _schemas? : {Body? : any, Response? : any};
+
+	private _serializer : Serializer<any>;
 
 	// Populated param
 	private _params: Record<string, string> = {};
@@ -141,20 +143,23 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _maxBackPressure : number;
 
 
-	constructor(mousse : Mousse, serializer : Serializer<any>, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], upgradable : boolean, method? : HTTPRouteMethod, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
+	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], serializer : Serializer<any>, http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
 		this._mousse = mousse;
-		this._serializer = serializer;
 
 		this._ureq = req;
 		this._ures = res;
-		this._method = method;
 		this._route = route;
 
-		this._upgradable = upgradable;
+		this._serializer = serializer;
+
+		this._method = http?.method;
+		this._schemas = http?.schemas;
+		this._sustainable = !!http?.method && (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(http?.method);
+
+		this._upgradable = !!ws;
 		this._socketContext = ws?.socket;
 		this._maxBackPressure = ws?.maxBackPressure ?? 16 * 1024; // 16kb default
 
-		this._sustainable = !!method && (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(method);
 
 		// Populate params
 		for (let i = 0; i < params.length; i++)
@@ -170,9 +175,6 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 				return;
 			this._ended = true;
 		});
-		
-
-		// ? Need to check if request has been paused or has not been fully received (see hyper express)
 	}
 
 
@@ -241,7 +243,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 		const contentType = this._ureq.getHeader('content-type');
 		this._bodyRaw = await this._getBodyRaw(this._ures);
-		this._bodyParsed = await this._serializer.serializeBody(this._bodyRaw, contentType); // this._parseBodyRaw(contentType, this._bodyRaw);
+		this._bodyParsed = await this._serializer.serializeBody(this._bodyRaw, contentType, this._schemas?.Body);
 
 		return raw ? this._bodyRaw : ((this._bodyParsed ?? {}) as Types["Body"]);
 	}
@@ -455,7 +457,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(status)
 			this.status(status.code, status.message);
 
-		return this.header('content-type', 'application/json').respond(this._serializer.serializeResponse(body));
+		return this.header('content-type', 'application/json').respond(this._serializer.serializeResponse(body, this._schemas?.Response));
    }
 
 
