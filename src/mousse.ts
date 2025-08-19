@@ -1,4 +1,4 @@
-import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString} from 'uWebSockets.js';
+import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
 import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler.js';
 import { HTTPRouteMethod, Middleware, RouteMethod, HTTPRouteOptions, Router, WSRouteOptions } from './router.js';
 import { Handler, Context, ContextTypes, WebSocket, WSHandler, MiddlewareHandler, PATCHHandlers, POSTHandlers, PUTHandlers, GETHandlers, Handlers, DELHandlers, OPTIONSHandlers, HEADHandlers } from './context.js';
@@ -487,7 +487,7 @@ export class Mousse{
 	 * @param port 
 	 * @param callback 
 	 */
-	listen(port : number, callback? : (listenSocket : uWSListenSocket | false) => void | Promise<void>){
+	listen(port : number, callback? : (listenSocket : uWSListenSocket | false, port : number) => void | Promise<void>){
 		if(this._listenSocket)
 			throw new Error('Mousse Instance is already listening');
 		
@@ -497,7 +497,7 @@ export class Mousse{
 		this._app.listen(port, (ls) => {
 			this._listenSocket = ls;
 			if(callback)
-				callback(ls);
+				callback(ls, uWSSocketLocalPort(ls));
 		});
 	}
 
