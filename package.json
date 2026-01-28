@@ -1,15 +1,14 @@
 {
-  "name": "moussemono",
+  "name": "mousse-monorepo",
   "private": true,
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
-    "prettier": "^3.7.4",
+    "@changesets/cli": "^2.29.8",
     "turbo": "^2.7.6",
     "typescript": "5.9.2"
   },

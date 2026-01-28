@@ -1,135 +1,147 @@
-# Turborepo starter
+> **WARNING** : This is a work in progress as I rewrite all the code base, no package is yet available
 
-This Turborepo starter is maintained by the Turborepo core team.
+# Mousse : Let us play with bubbles 
 
-## Using this example
+![tag](https://img.shields.io/badge/version-1.0.0-0082B4.svg)
+![tag](https://img.shields.io/badge/licence-MIT-9cf.svg)
 
-Run the following command:
+<img align="right" src=./examples/res/logo.svg height="150px">
 
-```sh
-npx create-turbo@latest
+Mousse is a NodeJS web server framework developed in typescript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route http requests and handle websockets or server-sent events. It uses a middlewares-based structure and handlers as inspired by [hyper-expess](https://github.com/kartikk221/hyper-express), [mesh](https://github.com/ionited/mesh) and [expressJS](https://expressjs.com/).
+
+> In french Mousse refers to soap foam, composed of thousands bubbles : the requests ☁️☁️ 
+
+## Quick Start
+
+```bash
+npm install --save "mousse"
 ```
 
-## What's inside?
+```ts
+import { Mousse } from "mousse"
 
-This Turborepo includes the following packages/apps:
+let mousse = new Mousse({port : 8080});
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+mousse.get("/", (c) => {
+  return { status: 200, body: "Hello World !" };
+}).start();
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+In this example `mousse` is the Mousse application. The method ```get(path, handler)``` is used to specify what to do when a GET request target the `"/"` path. In the arrow handler declaration, c is a `Context` instance and contains the request, the response and multiple utility methods.
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+## Handlers and Routers
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
 
-### Develop
+### Basic routing
 
-To develop all apps and packages, run the following command:
+The primary objective of Mousse is to provide an routing tool to allow efficient and easy request handling based on request's path and method type.
 
-```
-cd my-turborepo
+When a request is recieved by a `Mousse` application, it is wrapped into a `Context` object before being routed through appropriate middlewares and handler depending on request method and url.
+Each middleware is executed synchronously regardless of its type (async or sync).
 
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
+To register middlewares and a handler in to a Mousse app you just need to use one of the multiple registration function on the form of :
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
+```ts
+mousse.METHOD(pattern, middleware1, middleware2, handler);
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+With `mousse` the Mousse application `METHOD` the corresponding request method (get, post, patch, ws, sse etc), `pattern` is the part of url the request url as to match in order to be sent through the middlewares `middleware1` and `middleware2` and end its journey in the `handler` which is a handler function that must take a Context as first argument.
 
-```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
+Registering middlewares and handler on a new path opens a new possible "route" for requests to target. You can either create passive route with a simple plain path or use a dynamic path to get parameters.
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+```ts
+mousse.get("/staticpath", (c) => { console.log("Static route");});
+
+mousse.get("/dynamicpath/:myparam", (c) => { console.log("Dynamic " + c.params["myparam"] + " route"; )} );
 ```
 
-### Remote Caching
+### Handler and Middleware function
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+Handler and Middleware are function that takes a `Context` object as an argument. The only difference between both is the fact that Handler function may return a result which will be considered as the response body if the request has not been answered yet.
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
+```ts
+mousse.get("",
+  (c) => {
+    console.log("Middleware");
+  },
+  (c) => {
+    console.log("Final handler");
+	 return "Hello World !"; 
+  }
+ )
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+### Router object
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+In order to better structure your Mousse application, you can create a `Router` object that provides similar routing functions than Mousse application.
 
+Once you have created your router and registered routes on it you can bind it to a specific path to your Mousse application.
+
+```ts
+let mousse = new Mousse({port : 8080});
+
+let myRouter = new Router();
+
+myRouter.get("/", (c) => {
+  c.response = { status: 200, body: "Hello World !" };
+})
+
+mousse.use("myRouterpath/", myRouter).start();;
 ```
-# With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
 
-# Without [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
+## Context object
+
+Before being routed and processed, each request to the server is converted into a Context object which type depends on the request type. Three different Context type exists : HTTPContext, WSContext and SSEContext. Each Context type proposes dedicated utility functions. All Context types also share common utility functions.
+
+> *** WIP ***
+
+## WebSockets
+
+Mousse provides a simple way to manage WebSockets.
+
+```ts
+
+mousse.ws("/websocket",
+  (context) => {
+		// This context is upgradable 
+      //Upgradable requests hitting /websocket 
+	}
+);
 ```
 
-## Useful Links
+> *** WIP ***
 
-Learn more about the power of Turborepo:
+## Server-Sent Events
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Mousse provides a simple way to manage Server-Sent Events (SSE) system. Each SSE are sustained ```GET``` requests.
+
+```ts
+mousse.get("/serversentevent/get",
+  (context : Context) => {
+    // This context is sustainable, meaning you can call .sustain() to start a sse channel. 
+	 context.sustain();
+
+	// Will send "hello" through a SSE
+	 setTimeout(() => context.send("hello"), 500);
+  }
+);
+
+mousse.sse("/serversentevent/sse",
+  (context : Context) => {
+      // This context has already been sustained 
+		// Will send "hello" through a SSE
+	 	setTimeout(() => context.send("hello"), 500);
+	}
+);
+```
+
+> NOTE : sustain() will through an error if context is not sustainable but will do nothing if it is already sustained.
+
+
+## Contributing
+
+> Disclaimer Even though i'm proud of this first version, it represents one of my first public, ambitious and typescript based module. Many improvements needs to be done and will be, I hope.
+
+I haven't yet decided a clear procedure to contibute to this package. I guess the main contribution you can make for now is test it and open issues to help me chase the bugs. I will try to fix them as fast as I can while thinking of better implementation for performance gain and new handy features. If this package begins to get big attention, I might invite most interested people to participate in its design and development.
+
+Note that further improvements regarding documentation are coming.

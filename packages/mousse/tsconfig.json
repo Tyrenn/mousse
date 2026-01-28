@@ -1,0 +1,7 @@
+{
+	"extends": "@core/tsconfig/base",
+	"compilerOptions": {
+		"baseUrl": "./src",
+		"outDir": "dist"
+	}
+}

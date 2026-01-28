@@ -1,0 +1,29 @@
+{
+	"name": "mousse",
+	"version": "0.0.0",
+	"author": "Guillaume Vailland",
+	"license": "MIT",
+	
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+	   ".": {
+	   "types": "./dist/index.d.ts",
+	   "default": "./dist/index.js"
+	   }
+	},
+	
+	"dependencies": {
+		"mime-types": "^3.0.1",
+		"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.52.0"
+	},
+	"devDependencies": {
+		"@core/tsconfig": "workspace:*",
+
+		"@types/mime-types": "^3.0.1",
+		"@types/node": "^24.1.0",
+		"tsc": "^2.0.4",
+		"typescript": "^5.9.2"
+	}
+}

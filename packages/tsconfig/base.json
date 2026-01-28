@@ -1,0 +1,16 @@
+{
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"display": "Default",
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "NodeNext",
+		"sourceMap": true,
+		"outDir": "dist",
+		"removeComments": true,
+		"strict": true,
+		"moduleResolution": "NodeNext",
+		"esModuleInterop": true,
+		"skipLibCheck": false,
+		"forceConsistentCasingInFileNames": false
+	}
+}
