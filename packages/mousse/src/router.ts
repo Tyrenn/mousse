@@ -1,63 +1,32 @@
 import { Serializer } from 'serializer/index.js';
 import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler } from './context.js';
 import { joinUri } from './utils.js';
+import { HTTPRoute, HTTPRouteOptions } from 'route/http.js';
+import { WSRoute, WSRouteOptions } from 'route/ws.js';
 
 export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put' | 'patch';
 
 export type RouteMethod =  HTTPRouteMethod | 'ws';
-
-export interface HTTPRouteOptions {
-	schemas ? : {Body? : any, Response? : any};
-	serializer? : Serializer<any>;
-}
-
-export interface HTTPRoute<CT extends ContextTypes, EC extends any = {}> {
-	method : HTTPRouteMethod;
-	pattern: string;
-	options? : HTTPRouteOptions;
-	handler: Handler<CT, EC>;
-};
 
 export interface Middleware<CT extends ContextTypes, EC extends any = {}>{
 	pattern : string;
 	handler: MiddlewareHandler<CT, EC>;
 }
 
-export type WSRouteOptions = {
-	maxBackPressure? : number;
-}
-
-export interface WSRoute<CT extends ContextTypes, EC extends any = {}>{
-	pattern : string;
-	options? : WSRouteOptions;
-	handler: MiddlewareHandler<CT, EC>;
-}
 
 /**
  * Router are simply collection of routes and middlewares
  * They can be used as middleware in the Mousse or other Router 'use' method
  */
 export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExtendContext extends any = {}>{
-	private _routes : HTTPRoute<any, any>[] = new Array();
+	protected _middlewares : Middleware<any, any>[] = new Array();
 
-	private _middlewares : Middleware<any, any>[] = new Array();
+	protected _httproutes : HTTPRoute<any, any>[] = new Array();
+	protected _wsroutes : WSRoute<any, any>[] = new Array();
 
-	private _wsroutes : WSRoute<any, any>[] = new Array();
 
 	constructor(){
 	
-	}
-
-	get routes(){
-		return this._routes;
-	}
-
-	get middlewares(){
-		return this._middlewares;
-	}
-
-	get wsroutes(){
-		return this._wsroutes;	
 	}
 
 	/**
@@ -83,19 +52,21 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			if(handlers[i] instanceof Router){
 				const router = handlers[i] as Router;
 
-				for(let j = 0; j < router.middlewares.length; j++){
-					const middleware = router.middlewares[j];
+				for(let j = 0; j < router._middlewares.length; j++){
+					const middleware = router._middlewares[j];
 					this._middlewares.push({pattern : joinUri(pattern, middleware.pattern), handler : middleware.handler});
 				}
 				
-				for(let j = 0; j < router.routes.length; j++){
-					const route = router.routes[j];
-					this._routes.push({method : route.method, pattern : joinUri(pattern, route.pattern), handler : route.handler});
+				for(let j = 0; j < router._httproutes.length; j++){
+					const route = router._httproutes[j];
+					route.pattern = joinUri(pattern, route.pattern);
+					this._httproutes.push(route);
 				}
 
-				for(let j = 0; j < router.wsroutes.length; j++){
-					const wsroute = router.wsroutes[j];
-					this._wsroutes.push({pattern : joinUri(pattern, wsroute.pattern), handler : wsroute.handler, options : wsroute.options});
+				for(let j = 0; j < router._wsroutes.length; j++){
+					const wsroute = router._wsroutes[j];
+					wsroute.pattern = joinUri(pattern, wsroute.pattern);
+					this._wsroutes.push(wsroute);
 				}
 			}
 			else{
@@ -114,19 +85,19 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 */
 	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [WSRouteOptions | WSHandler<CT, EC>, ...WSHandler<CT, EC>[]]){
 		if(args.length < 1){
-			this._wsroutes.push({pattern, handler : () => {}});
+			this._wsroutes.push(new WSRoute(pattern, () => {}));
 		}
 		else if(args.length == 1 && typeof args[0] === "function"){
-			this._wsroutes.push({pattern, handler : args[0]});
+			this._wsroutes.push(new WSRoute(pattern, args[0]));
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
-			this._wsroutes.push({pattern, options : args[0], handler : () => {}});
+			this._wsroutes.push(new WSRoute(pattern, () => {}, args[0]));
 		}
 		else{
 			const handler = args.pop() as MiddlewareHandler<CT, EC>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
 			this.use(pattern, ...(args as MiddlewareHandler<CT, EC>[]));
-			this._wsroutes.push({pattern, options, handler});
+			this._wsroutes.push(new WSRoute(pattern, handler, options));
 		}
 
 		return this;
@@ -168,12 +139,12 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		const handlers : Handlers<CT, EC> = args as Handlers<CT, EC>;
 
 		if(handlers.length == 1)
-			this._routes.push({method, pattern, options, handler : handlers[0]});
+			this._httproutes.push(new HTTPRoute(method, pattern, handlers[0], options));
 		else{
 			// Last one is always an ActiveContextHandler
 			const handler : Handler<CT> = handlers.pop() as Handler<CT>;
 			this.use(pattern, ...(handlers as MiddlewareHandler<CT, EC>[]));
-			this._routes.push({method, pattern, options, handler});
+			this._httproutes.push(new HTTPRoute(method, pattern, handler, options));
 		}
 
 		return this;
@@ -281,3 +252,5 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		return this.add<CT, EC>('patch', pattern, ...args);
 	}
 }
+
+export { HTTPRouteOptions, WSRouteOptions };

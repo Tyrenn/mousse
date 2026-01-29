@@ -2,7 +2,7 @@ import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpRes
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
-import type { Mousse } from './index.js';
+import type { Mousse } from './mousse.js';
 import { parseQuery } from './utils.js';
 import { HTTPRouteMethod } from './router.js';
 import { Serializer } from './serializer/index.js';
