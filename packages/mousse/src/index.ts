@@ -12,6 +12,11 @@ export type MousseOptions = uWSAppOptions & {
 	serializer? : Serializer<any>
 }
 
+
+
+/**
+ * Mousse app directly register routes in the uWS app whereas Router save routes inside array.
+ */
 export class Mousse{
 
 	private _app : uWSTemplatedApp;
@@ -53,6 +58,8 @@ export class Mousse{
 
 	/**
 	 * Register a new route to uWebsocket App with an async handler iterating over matching middleware
+*	Middleware's application depends on registration time. Only already registered middlewares are applied to a Route. 
+*
 	 * @param method
 	 * @param pattern
 	 * @param handler
@@ -275,7 +282,7 @@ export class Mousse{
 
 
 	/**
-	 *
+	 * Allow to register Middleware or Routers
 	 * @param pattern
 	 * @param handlers
 	 */
