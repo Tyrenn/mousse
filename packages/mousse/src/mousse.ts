@@ -1,8 +1,8 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
-import { ErrorHandler, WebsocketEventErrorHandler } from './errorhandler.js';
+import { ErrorHandler, WebsocketEventErrorHandler } from './route/errorhandler.js';
 import { Middleware, Router } from './router.js';
 import { Handler, Context, ContextTypes, WebSocket} from './context/index.js';
-import { Logger } from './logger.js';
+import { Logger } from './route/logger.js';
 import { HTTPRoute } from 'route/http.js';
 import { WSRoute } from 'route/ws.js';
 
@@ -27,9 +27,6 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 	private _listenSocket : uWSListenSocket | undefined;
 
-	private _logger : Logger | undefined;
-
-	private _serializer : Serializer<any>;
 
 	constructor(options? : MousseOptions){
 
@@ -48,9 +45,6 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			this._app = uWSApp(filteredOptions);
 		else
 			this._app = uWSApp();
-
-		this._logger = options?.logger;
-		this._serializer = options?.serializer ?? new DefaultSerializer();
 	}
 
 
@@ -76,7 +70,9 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		this._app[route.method](route.pattern, async (ures, ureq) => {
 			// The body is built in a promise handled by here
-			const context = new Context(this, ureq, ures, route.pattern, params, route.options?.serializer ?? this._serializer, {method : route.method, schemas : route.options?.schemas});
+			const context = new Context(
+				this, ureq, ures, route.pattern, params, 
+				, {method : route.method, schemas : route.options?.schemas});
 			let res : any = undefined;
 
 			try{

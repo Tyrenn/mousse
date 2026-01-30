@@ -1,7 +1,9 @@
-import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler } from './context/index.js';
+import { Logger } from 'route/logger.js';
+import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler, BodyParser, ResponseSerializer } from './context/index.js';
 import { joinUri } from './utils.js';
 import { HTTPRoute, HTTPRouteOptions } from 'route/http.js';
 import { WSRoute, WSRouteOptions } from 'route/ws.js';
+import { HTTPErrorHandler } from 'route/errorhandler.js';
 
 export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put' | 'patch';
 
@@ -25,9 +27,11 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	protected _httproutes : HTTPRoute<any, any>[] = new Array();
 	protected _wsroutes : WSRoute<any, any>[] = new Array();
 
+	protected _defaultRouteOptions? : HTTPRouteOptions & WSRouteOptions;
 
-	constructor(){
-	
+
+	constructor(options? : HTTPRouteOptions & WSRouteOptions){
+		this._defaultRouteOptions = options;
 	}
 
 	/**
@@ -60,9 +64,10 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					this._middlewares.push({...middleware, pattern : joinUri(pattern, middleware.pattern)});
 				}
 				
+				// Copying route replacing none defined options by defined one
 				for(let j = 0; j < router._httproutes.length; j++){
 					const route = router._httproutes[j];
-					this._httproutes.push({...route, pattern : joinUri(pattern, route.pattern), registered : false});
+					this._httproutes.push({...this._defaultRouteOptions, ...route, pattern : joinUri(pattern, route.pattern), registered : false});
 				}
 
 				for(let j = 0; j < router._wsroutes.length; j++){
@@ -86,19 +91,19 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 */
 	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [WSRouteOptions | WSHandler<CT, EC>, ...WSHandler<CT, EC>[]]){
 		if(args.length < 1){
-			this._wsroutes.push({pattern, handler : () => {}, registered : false});
+			this._wsroutes.push({...this._defaultRouteOptions, pattern, handler : () => {}, registered : false});
 		}
 		else if(args.length == 1 && typeof args[0] === "function"){
-			this._wsroutes.push({pattern, handler : args[0], registered : false});
+			this._wsroutes.push({...this._defaultRouteOptions, pattern, handler : args[0], registered : false});
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
-			this._wsroutes.push({pattern, handler : () => {}, options : args[0], registered : false});
+			this._wsroutes.push({...this._defaultRouteOptions, pattern, handler : () => {}, registered : false, ...args[0]});
 		}
 		else{
 			const handler = args.pop() as MiddlewareHandler<CT, EC>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
 			this.use(pattern, ...(args as MiddlewareHandler<CT, EC>[]));
-			this._wsroutes.push({pattern, handler, options, registered : false});
+			this._wsroutes.push({...this._defaultRouteOptions, pattern, handler, registered : false, ...options});
 		}
 
 		return this;
@@ -140,17 +145,47 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		const handlers : Handlers<CT, EC> = args as Handlers<CT, EC>;
 
 		if(handlers.length == 1)
-			this._httproutes.push({method, pattern, handler : handlers[0], options, registered : false});
+			this._httproutes.push({...this._defaultRouteOptions, method, pattern, handler : handlers[0], registered : false, ...options});
 		else{
 			// Last one is always an ActiveContextHandler
 			const handler : Handler<CT> = handlers.pop() as Handler<CT>;
 			this.use(pattern, ...(handlers as MiddlewareHandler<CT, EC>[]));
-			this._httproutes.push({method, pattern, handler, options, registered : false});
+			this._httproutes.push({...this._defaultRouteOptions, method, pattern, handler, registered : false, ...options});
 		}
 
 		return this;
 	}
 	
+
+	/**
+	 * OPTIONS HELPER METHOD
+	 */
+
+	setDefaultLogger(logger : Logger){
+		this._defaultRouteOptions = {...this._defaultRouteOptions, logger};
+	}
+
+	setDefaultHTTPErrorHandler(httpErrorHandler : HTTPErrorHandler){
+		this._defaultRouteOptions = {...this._defaultRouteOptions, httpErrorHandler};
+	}
+
+	setDefaultBodyParser(bodyParser : BodyParser<any>){
+		this._defaultRouteOptions = {...this._defaultRouteOptions, bodyParser};
+	}
+
+	setDefaultResponseSerializer(responseSerializer : ResponseSerializer<any>){
+		this._defaultRouteOptions = {...this._defaultRouteOptions, responseSerializer};
+	}
+
+
+
+
+
+	/**
+	 * HTTP HELPER METHOD
+	 */
+
+
 	/**
 	 * 
 	 * @param pattern 
