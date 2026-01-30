@@ -1,10 +1,14 @@
-import { ContextTypes, MiddlewareHandler } from "context/index.js";
+import { BodyParser, ContextTypes, MiddlewareHandler, ResponseSerializer } from "context/index.js";
 import { Logger } from "./logger.js";
-import { WSErrorHandler } from "./errorhandler.js";
+import { HTTPErrorHandler, WSErrorHandler } from "./errorhandler.js";
 
 export type WSRouteOptions = {
 	maxBackPressure? : number;
 
+	bodyParser? : BodyParser<any>;
+	responseSerializer? : ResponseSerializer<any>;
+
+	httpErrorHandler? : HTTPErrorHandler;
 	wsErrorHandler? : WSErrorHandler;
 
 	logger? : Logger;

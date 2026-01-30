@@ -7,6 +7,7 @@ import { parseQueryString } from '../utils.js';
 import { HTTPRouteMethod } from '../router.js';
 import { BodyParser } from 'context/bodyparser.js';
 import { ResponseSerializer } from './responseserializer.js';
+import { Logger } from 'route/logger.js';
 
 /**
  * Enhanced websocket
@@ -70,6 +71,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// The mousse instance that has created the context
 	private _mousse : Mousse;
 
+	private _logger? : Logger;
 
 //// *
 // * Request related attributes
@@ -152,7 +154,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _maxBackPressure : number;
 
 
-	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], bodyParser : BodyParser<any>, responseSerializer : ResponseSerializer<any>, http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
+	constructor(
+		mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], 
+		bodyParser : BodyParser<any>, responseSerializer : ResponseSerializer<any>, logger? : Logger,
+		http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, 
+		ws? : {socket? : uWSSocketContext, maxBackPressure? : number}
+	) {
 		this._mousse = mousse;
 
 		this._ureq = req;
@@ -161,6 +168,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 		this._bodyParser = bodyParser;
 		this._responseSerializer = responseSerializer;
+		this._logger = logger;
 
 		this._method = http?.method;
 		this._schemas = http?.schemas;
@@ -198,7 +206,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 //// *
 
 	log(data? : any){
-		this._mousse.log(data);
+		this._logger?.log(data);
 	}
 
 
@@ -333,8 +341,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		return this._ures;
 	}
 
-	//*
-
+	/**
+	 * 
+	 * @param code 
+	 * @param message 
+	 * @returns 
+	 */
 	status(code: number, message? : string) {
 		this._statusCode = code;
 		this._statusMessage = message;
@@ -348,9 +360,6 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		return this._statusCode;
 	}
 
-	/**
-	*
-	*/
 	/**
 	 * Set the response content type header based on the provided mime type. Example: type('json')
 	 * @param filenameOrExt file extension or mime types

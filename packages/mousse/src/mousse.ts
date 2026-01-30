@@ -1,7 +1,6 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
-import { ErrorHandler, WebsocketEventErrorHandler } from './route/errorhandler.js';
 import { Middleware, Router } from './router.js';
-import { Handler, Context, ContextTypes, WebSocket} from './context/index.js';
+import { Handler, Context, ContextTypes, WebSocket, DefaultBodyParser, DefaultResponseSerializer} from './context/index.js';
 import { Logger } from './route/logger.js';
 import { HTTPRoute } from 'route/http.js';
 import { WSRoute } from 'route/ws.js';
@@ -18,10 +17,6 @@ export type MousseOptions = uWSAppOptions & {
 export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExtendContext extends any = {}> extends Router<DefaultContextTypes, DefaultExtendContext>{
 
 	private _app : uWSTemplatedApp;
-
-	private _errorHandler : ErrorHandler | undefined;
-
-	private _wsErrorHandler : WebsocketEventErrorHandler | undefined;
 
 	private _defaultHandler : Handler<any, any> | undefined;
 
@@ -70,9 +65,12 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		this._app[route.method](route.pattern, async (ures, ureq) => {
 			// The body is built in a promise handled by here
-			const context = new Context(
-				this, ureq, ures, route.pattern, params, 
-				, {method : route.method, schemas : route.options?.schemas});
+			const context = new Context(this, ureq, ures, route.pattern, params,
+				route.bodyParser ?? new DefaultBodyParser(),
+				route.responseSerializer ?? new DefaultResponseSerializer(),
+				route?.logger,
+				{method : route.method, schemas : route.schemas}
+			);
 			let res : any = undefined;
 
 			try{
@@ -81,8 +79,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 				res = await route.handler(context);
 			} catch(e) {
-				if(this._errorHandler)
-					this._errorHandler(e, context);
+				if(route.httpErrorHandler)
+					route.httpErrorHandler.handle(e, context);
 			}
 
 			// Handle case the last handler returns something
@@ -120,7 +118,11 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		this._app.ws(route.pattern, {
 			upgrade : async (ures, ureq, wsc) => {
 				// Create an upgradable context
-				const context = new Context(this, ureq, ures, route.pattern, params, this._serializer, undefined, {socket : wsc, maxBackPressure : route.options?.maxBackPressure});
+				const context = new Context(this, ureq, ures, route.pattern, params, 
+					route.bodyParser ?? new DefaultBodyParser(),
+					route.responseSerializer ?? new DefaultResponseSerializer(),
+					route?.logger,
+					undefined, {socket : wsc, maxBackPressure : route?.maxBackPressure});
 				try{
 					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++)
@@ -133,8 +135,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(!context.ended && context.upgradable && context.upgraded)
 						context.upgrade();
 				} catch(e) {
-					if(this._errorHandler)
-						this._errorHandler(e, context);
+					if(route.httpErrorHandler)
+						route.httpErrorHandler.handle(e, context);
 				}
 			},
 			open: (ws: WebSocket) => {
@@ -151,8 +153,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			message: (ws: WebSocket, message, isBinary) => {
@@ -161,8 +163,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws, message, isBinary);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			ping: (ws, message) => {
@@ -171,8 +173,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws, message);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			pong: (ws, message) => {
@@ -181,8 +183,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws, message);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			dropped: (ws, message, isBinary) => {
@@ -191,8 +193,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws, message, isBinary);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			drain: (ws : WebSocket) => {
@@ -206,8 +208,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 			close: (ws : WebSocket, code, message) => {
@@ -216,27 +218,14 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					if(handler)
 						handler(ws, code, message);
 				} catch(e) {
-					if(this._wsErrorHandler)
-						this._wsErrorHandler(e);
+					if(route.wsErrorHandler)
+						route.wsErrorHandler.handle(e);
 				}
 			},
 		});
 
 		route.registered = true;
 	}
-
-
-	/**
-	 *
-	 * @param errorHandler
-	 * @returns
-	 */
-	setErrorHandler(errorHandler : ErrorHandler | undefined){
-		this._errorHandler = errorHandler;
-
-		return this;
-	}
-
 
 	/**
 	 *
@@ -248,38 +237,6 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		return this;
 	}
-
-
-	setSerializer(serializer : Serializer<any>){
-		this._serializer = serializer;
-
-		return this;
-	}
-
-
-	/**
-	 *
-	 * @param logger
-	 * @returns
-	 */
-	setLogger(logger : Logger | undefined){
-		this._logger = logger;
-
-		return this;
-	}
-
-
-	/**
-	 *
-	 * @param data
-	 */
-	log(data? : any){
-		if(this._logger)
-			this._logger.log(data);
-	}
-
-
-
 
 
 
@@ -308,7 +265,7 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		this.register();
 
 		if(this._defaultHandler)
-			this._registerHTTP('any', '/*', this._defaultHandler);
+			this._registerHTTP({method : 'any', pattern : '/*', handler : this._defaultHandler, registered : false});
 
 		this._app.listen(port, (ls) => {
 			this._listenSocket = ls;
