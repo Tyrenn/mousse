@@ -2,10 +2,11 @@ import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpRes
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
-import type { Mousse } from './mousse.js';
-import { parseQuery } from './utils.js';
-import { HTTPRouteMethod } from './router.js';
-import { Serializer } from './serializer/index.js';
+import type { Mousse } from '../mousse.js';
+import { parseQueryString } from '../utils.js';
+import { HTTPRouteMethod } from '../router.js';
+import { BodyParser } from 'context/bodyparser.js';
+import { ResponseSerializer } from './responseserializer.js';
 
 /**
  * Enhanced websocket
@@ -31,7 +32,8 @@ export type ContextTypes = {
 	Response? : any;
 	Params? : string;
 }
-type DefaultContextTypes = {Body : any, Response : any};
+
+export type DefaultContextTypes = {Body : any, Response : any};
 
 // Pattern is string if types is undefined and :str/... if defined
 
@@ -89,7 +91,11 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	//
 	private _schemas? : {Body? : any, Response? : any};
 
-	private _serializer : Serializer<any>;
+
+	private _bodyParser : BodyParser<any>;
+
+	private _responseSerializer : ResponseSerializer<any>;
+
 
 	// Populated param
 	private _params: Record<string, string> = {};
@@ -146,14 +152,15 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _maxBackPressure : number;
 
 
-	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], serializer : Serializer<any>, http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
+	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], bodyParser : BodyParser<any>, responseSerializer : ResponseSerializer<any>, http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
 		this._mousse = mousse;
 
 		this._ureq = req;
 		this._ures = res;
 		this._route = route;
 
-		this._serializer = serializer;
+		this._bodyParser = bodyParser;
+		this._responseSerializer = responseSerializer;
 
 		this._method = http?.method;
 		this._schemas = http?.schemas;
@@ -246,7 +253,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 		const contentType = this._ureq.getHeader('content-type');
 		this._bodyRaw = await this._getBodyRaw(this._ures);
-		this._bodyParsed = await this._serializer.serializeBody(this._bodyRaw, contentType, this._schemas?.Body);
+		this._bodyParsed = await this._bodyParser.parse(this._bodyRaw, contentType, this._schemas?.Body);
 
 		return raw ? this._bodyRaw : ((this._bodyParsed ?? {}) as Types["Body"]);
 	}
@@ -298,7 +305,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		const query = this._ureq.getQuery();
 
 		if (query)
-			return parseQuery(query);
+			return parseQueryString(query);
 
 		return {};
 	}
@@ -460,7 +467,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(status)
 			this.status(status.code, status.message);
 
-		return this.header('content-type', 'application/json').respond(this._serializer.serializeResponse(body, this._schemas?.Response));
+		return this.header('content-type', 'application/json').respond(this._responseSerializer.serialize(body, this._schemas?.Response));
    }
 
 
@@ -615,96 +622,3 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// ? What about closing ws ??
 }
 
-
-/**
- * * HANDLERS TYPES
- */
-
-
-type GenericHandler<
-	T extends ContextTypes,
-	C extends any,
-	Passive extends boolean = false
-> = (
-	context: C
-) => Passive extends true ? (void | Promise<void>) : (void | T["Response"] | Promise<void | T["Response"]>);
-
-/**
- * General
- */
-
-export type Handler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Context<Types>>;
-export type MiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Context<Types>, true>;
-
-export type Handlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...MiddlewareHandler<Types, ExtendContext>[], Handler<Types, ExtendContext>];
-
-
-/**
- * WS handlers Types
- */
-export type WSHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext>, true>;
-
-
-/**
- * POST handlers Types
- */
-export type POSTHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof UpgradableContext>>;
-
-export type POSTMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof UpgradableContext>, true>;
-
-export type POSTHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...POSTMiddlewareHandler<Types, ExtendContext>[], POSTHandler<Types, ExtendContext>];
-
-/**
- * PUT handlers Types
- */
-export type PUTHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
-
-export type PUTMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type PUTHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...PUTMiddlewareHandler<Types, ExtendContext>[], PUTHandler<Types, ExtendContext>];
-
-/**
- * PATCH handlers Types
- */
-export type PATCHHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
-
-export type PATCHMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type PATCHHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...PATCHMiddlewareHandler<Types, ExtendContext>[], PATCHHandler<Types, ExtendContext>];
-
-/**
- * Head handlers Types
- */
-export type HEADHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
-
-export type HEADMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type HEADHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...HEADMiddlewareHandler<Types, ExtendContext>[], HEADHandler<Types, ExtendContext>];
-
-/**
- * Options handlers Types
- */
-export type OPTIONSHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
-
-export type OPTIONSMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type OPTIONSHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...OPTIONSMiddlewareHandler<Types, ExtendContext>[], OPTIONSHandler<Types, ExtendContext>];
-
-/**
- * Get
- */
-export type GETHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof UpgradableContext>>;
-
-export type GETMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof UpgradableContext>, true>;
-
-export type GETHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...GETMiddlewareHandler<Types, ExtendContext>[], GETHandler<Types, ExtendContext>];
-
-
-/**
- * DELETE Specific handlers
- */
-export type DELHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
-
-export type DELMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type DELHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...DELMiddlewareHandler<Types, ExtendContext>[], DELHandler<Types, ExtendContext>];

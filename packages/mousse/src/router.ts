@@ -1,5 +1,4 @@
-import { Serializer } from 'serializer/index.js';
-import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler } from './context.js';
+import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler } from './context/index.js';
 import { joinUri } from './utils.js';
 import { HTTPRoute, HTTPRouteOptions } from 'route/http.js';
 import { WSRoute, WSRouteOptions } from 'route/ws.js';
@@ -13,6 +12,8 @@ export interface Middleware<CT extends ContextTypes, EC extends any = {}>{
 	handler: MiddlewareHandler<CT, EC>;
 }
 
+
+// TODO Add the possibility to give default bodyparser/responseserializer to route
 
 /**
  * Router are simply collection of routes and middlewares
@@ -31,6 +32,8 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 	/**
 	 * Register middleware or router
+		In case of a router, middlewares and routes are copied and reset to Registered : false.
+		This way a router definition can be reused multiple times.
 	 * @param pattern 
 	 * @param handlers 
 	 * @returns 
@@ -54,19 +57,17 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 				for(let j = 0; j < router._middlewares.length; j++){
 					const middleware = router._middlewares[j];
-					this._middlewares.push({pattern : joinUri(pattern, middleware.pattern), handler : middleware.handler});
+					this._middlewares.push({...middleware, pattern : joinUri(pattern, middleware.pattern)});
 				}
 				
 				for(let j = 0; j < router._httproutes.length; j++){
 					const route = router._httproutes[j];
-					route.pattern = joinUri(pattern, route.pattern);
-					this._httproutes.push(route);
+					this._httproutes.push({...route, pattern : joinUri(pattern, route.pattern), registered : false});
 				}
 
 				for(let j = 0; j < router._wsroutes.length; j++){
 					const wsroute = router._wsroutes[j];
-					wsroute.pattern = joinUri(pattern, wsroute.pattern);
-					this._wsroutes.push(wsroute);
+					this._wsroutes.push({...wsroute, pattern : joinUri(pattern, wsroute.pattern), registered : false});
 				}
 			}
 			else{
@@ -85,19 +86,19 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 */
 	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [WSRouteOptions | WSHandler<CT, EC>, ...WSHandler<CT, EC>[]]){
 		if(args.length < 1){
-			this._wsroutes.push(new WSRoute(pattern, () => {}));
+			this._wsroutes.push({pattern, handler : () => {}, registered : false});
 		}
 		else if(args.length == 1 && typeof args[0] === "function"){
-			this._wsroutes.push(new WSRoute(pattern, args[0]));
+			this._wsroutes.push({pattern, handler : args[0], registered : false});
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
-			this._wsroutes.push(new WSRoute(pattern, () => {}, args[0]));
+			this._wsroutes.push({pattern, handler : () => {}, options : args[0], registered : false});
 		}
 		else{
 			const handler = args.pop() as MiddlewareHandler<CT, EC>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
 			this.use(pattern, ...(args as MiddlewareHandler<CT, EC>[]));
-			this._wsroutes.push(new WSRoute(pattern, handler, options));
+			this._wsroutes.push({pattern, handler, options, registered : false});
 		}
 
 		return this;
@@ -139,12 +140,12 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		const handlers : Handlers<CT, EC> = args as Handlers<CT, EC>;
 
 		if(handlers.length == 1)
-			this._httproutes.push(new HTTPRoute(method, pattern, handlers[0], options));
+			this._httproutes.push({method, pattern, handler : handlers[0], options, registered : false});
 		else{
 			// Last one is always an ActiveContextHandler
 			const handler : Handler<CT> = handlers.pop() as Handler<CT>;
 			this.use(pattern, ...(handlers as MiddlewareHandler<CT, EC>[]));
-			this._httproutes.push(new HTTPRoute(method, pattern, handler, options));
+			this._httproutes.push({method, pattern, handler, options, registered : false});
 		}
 
 		return this;
@@ -252,5 +253,3 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		return this.add<CT, EC>('patch', pattern, ...args);
 	}
 }
-
-export { HTTPRouteOptions, WSRouteOptions };

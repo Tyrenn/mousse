@@ -2,7 +2,7 @@ export function joinUri(patternParent : string, patternChild : string) {
 	return `${patternParent.replace(/\/+$/, '')}/${patternChild.replace(/^\/+/, '')}`;
 }
 
-export function parseQuery(query: string){
+export function parseQueryString(query: string){
 	const result: Record<string, string | string[]> = {};
 	const parts = query.split('&');
 

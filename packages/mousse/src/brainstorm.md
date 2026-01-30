@@ -22,21 +22,17 @@
 	=> Be able to call test / document on it...
 
 
-/!\ Different behaviour between Router and Mousse instance
-=> Router will save all middlewares until their usage in mousse instance
-=> As such, middleware registration order has no impact. All registered middlewares will be applied to all route even though routes are registered after middleware registration
+Logger/ErrorHandler are attached to mousse instance ?
+Or router... => Through route ?
 
-=> Mousse register routes directly so if a route A is registered before a middleware, that last middleware will not be active on the route A.
+Where to put tester ?
+	=> On route ?
+Where to put SchemaParser ? 
+	=> On route ?
 
-=> SHOULD normalize behavior.
-Either find a way to make the order impactful on router OR consider mousse instance as a router.
-
-For now no idea for the first solution.... Is it a good behavior ?
-
-For the second solution we could extends router class and actually register routes before server RUN, with a build step.
-
-Mousse options:
-=> Serializer
+Router options:
+=> BodyParser
+=> ResponseSerializer
 => Default response headers
 => 
 
