@@ -1,13 +1,11 @@
-import { Logger } from 'route/logger.js';
-import { Handler, ContextTypes, MiddlewareHandler, PATCHHandlers, POSTHandlers, GETHandlers, DELHandlers, Handlers, HEADHandlers, OPTIONSHandlers, PUTHandlers, WSHandler, BodyParser, ResponseSerializer } from './context/index.js';
+import { Logger } from 'module/logger.js';
 import { joinUri } from './utils.js';
-import { HTTPRoute, HTTPRouteOptions } from 'route/http.js';
-import { WSRoute, WSRouteOptions } from 'route/ws.js';
-import { HTTPErrorHandler } from 'route/errorhandler.js';
-
-export type HTTPRouteMethod = 'any' | 'del' | 'head' | 'get' | 'options' | 'post' | 'put' | 'patch';
-
-export type RouteMethod =  HTTPRouteMethod | 'ws';
+import { HTTPErrorHandler } from 'module/errorhandler.js';
+import { HTTPRoute, WSRoute, HTTPRouteOptions, WSRouteOptions, HTTPRouteMethod } from 'route.js';
+import { ContextTypes } from 'context.js';
+import { MiddlewareHandler, WSHandler, PATCHHandlers, POSTHandlers, PUTHandlers, GETHandlers, HEADHandlers, OPTIONSHandlers, DELHandlers, Handlers, Handler } from 'handler.js';
+import { BodyParser } from 'module/bodyparser.js';
+import { ResponseSerializer } from 'module/responseserializer.js';
 
 export interface Middleware<CT extends ContextTypes, EC extends any = {}>{
 	pattern : string;
@@ -109,8 +107,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		return this;
 	}
 
+
 	/**
-	 * Register new route
+	 * 🌐 Register new route
 	 * If middlewares are provided, record them using 'use' method
 	 * @param method 
 	 * @param pattern 
@@ -157,9 +156,10 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	}
 	
 
-	/**
-	 * OPTIONS HELPER METHOD
-	 */
+// ──────────────────────────
+// │ MODULES HELPER METHODS
+// ──────────────────────────
+
 
 	setDefaultLogger(logger : Logger){
 		this._defaultRouteOptions = {...this._defaultRouteOptions, logger};
@@ -180,11 +180,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 
 
-
-	/**
-	 * HTTP HELPER METHOD
-	 */
-
+// ──────────────────────────
+// │ 🌐 HTTP HELPER METHOD
+// ──────────────────────────
 
 	/**
 	 * 

@@ -1,7 +1,7 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
 import { Middleware, Router } from './router.js';
 import { Handler, Context, ContextTypes, WebSocket, DefaultBodyParser, DefaultResponseSerializer} from './context/index.js';
-import { Logger } from './route/logger.js';
+import { Logger } from './module/logger.js';
 import { HTTPRoute } from 'route/http.js';
 import { WSRoute } from 'route/ws.js';
 

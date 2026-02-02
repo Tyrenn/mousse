@@ -2,12 +2,11 @@ import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpRes
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
-import type { Mousse } from '../mousse.js';
-import { parseQueryString } from '../utils.js';
-import { HTTPRouteMethod } from '../router.js';
-import { BodyParser } from 'context/bodyparser.js';
-import { ResponseSerializer } from './responseserializer.js';
-import { Logger } from 'route/logger.js';
+import type { Mousse } from './mousse.js';
+import { parseQueryString } from './utils.js';
+import { BodyParser } from 'module/bodyparser.js';
+import { ResponseSerializer } from './module/responseserializer.js';
+import { Logger } from 'module/logger.js';
 
 /**
  * Enhanced websocket
@@ -73,9 +72,9 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	private _logger? : Logger;
 
-//// *
-// * Request related attributes
-//// *
+
+
+// 🌐 --- Request related attributes
 
 	// uWebSocket.js request
 	private _ureq : uHttpRequest;
@@ -106,9 +105,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _reqHeaders : Record<string, string> = {};
 
 
-//// *
-// * Response related attributes
-//// *
+
+// 🌐 -- Response related attributes
 
 	// uWebSocket.js response
 	private _ures : uHttpResponse;
@@ -126,9 +124,10 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _ended : boolean = false;
 
 
-//// *
-// * SSE related attributes
-//// *
+
+// -- SSE related attributes
+
+
 	private _sustainable : boolean = false;
 
 	private _sustained : boolean = false;
@@ -138,9 +137,9 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _isDraining : boolean = false;
 
 
-//// *
-// * WS related attributes
-//// *
+
+// -- WS related attributes
+
 	private _upgradable : boolean = false;
 
 	//
@@ -152,6 +151,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _socketContext : uWSSocketContext | undefined;
 
 	private _maxBackPressure : number;
+
+
 
 
 	constructor(
@@ -201,18 +202,14 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	}
 
 
-//// *
-// * OTHER METHODS
-//// *
+// -- OTHER METHODS
 
 	log(data? : any){
 		this._logger?.log(data);
 	}
 
 
-//// *
-// * REQUEST METHODS
-//// *
+// -- 🌐 REQUEST METHODS
 
 	get request(){
 		return this._ureq;
@@ -333,9 +330,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 
 
-//// *
-// * RESPONSE METHODS
-//// *
+// -- 🌐 RESPONSE METHODS
 
 	get response(){
 		return this._ures;

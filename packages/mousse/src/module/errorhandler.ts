@@ -1,4 +1,4 @@
-import { Context } from "../context/context.js";
+import { Context } from "../context.js";
 
 export interface HTTPErrorHandler{
 	handle(error : any, c : Context<any>) : void | Promise<void>;
