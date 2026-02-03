@@ -7,6 +7,7 @@ import { parseQueryString } from './utils.js';
 import { BodyParser } from 'module/bodyparser.js';
 import { ResponseSerializer } from './module/responseserializer.js';
 import { Logger } from 'module/logger.js';
+import { HTTPRouteMethod } from 'route.js';
 
 /**
  * Enhanced websocket

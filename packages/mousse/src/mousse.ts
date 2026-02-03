@@ -1,13 +1,11 @@
 import {App as uWSApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
 import { Middleware, Router } from './router.js';
-import { Handler, Context, ContextTypes, WebSocket, DefaultBodyParser, DefaultResponseSerializer} from './context/index.js';
-import { Logger } from './module/logger.js';
-import { HTTPRoute } from 'route/http.js';
-import { WSRoute } from 'route/ws.js';
+import { Context, ContextTypes, WebSocket} from './context.js';
+import { HTTPRoute, WSRoute } from 'route.js';
+import { DefaultBodyParser } from 'module/bodyparser.js';
+import { DefaultResponseSerializer } from 'module/responseserializer.js';
 
-export type MousseOptions = uWSAppOptions & {
-	logger? : Logger;
-}
+export type MousseOptions = uWSAppOptions;
 
 
 
@@ -17,8 +15,6 @@ export type MousseOptions = uWSAppOptions & {
 export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExtendContext extends any = {}> extends Router<DefaultContextTypes, DefaultExtendContext>{
 
 	private _app : uWSTemplatedApp;
-
-	private _defaultHandler : Handler<any, any> | undefined;
 
 	private _listenSocket : uWSListenSocket | undefined;
 
@@ -232,11 +228,6 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param defaultHandler
 	 * @returns
 	 */
-	setDefaultHandler(defaultHandler : Handler<any> | undefined){
-		this._defaultHandler = defaultHandler;
-
-		return this;
-	}
 
 
 
@@ -265,7 +256,7 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		this.register();
 
 		if(this._defaultHandler)
-			this._registerHTTP({method : 'any', pattern : '/*', handler : this._defaultHandler, registered : false});
+			this._registerHTTP({method : 'any', pattern : '/*', handler : this._defaultHandler.handle, registered : false});
 
 		this._app.listen(port, (ls) => {
 			this._listenSocket = ls;

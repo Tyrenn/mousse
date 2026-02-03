@@ -30,11 +30,38 @@ export interface HTTPRouteOptions {
 	// Logger ??
 }
 
-export interface HTTPRoute<CT extends ContextTypes, EC extends any = {}> extends HTTPRouteOptions{
+export class HTTPRoute<CT extends ContextTypes, EC extends any = {}> {
 	method : HTTPRouteMethod;
 	pattern: string;
 	handler: Handler<CT, EC>;
-	registered : boolean;
+	registered : boolean = false;
+
+
+	schemas? : {Body? : any, Response? : any};
+	bodyParser? : BodyParser<any>;
+	responseSerializer? : ResponseSerializer<any>;
+	httpErrorHandler? : HTTPErrorHandler;
+	logger? : Logger;
+
+
+	constructor(options : {method : HTTPRouteMethod, pattern : string, handler : Handler<CT, EC>} & HTTPRouteOptions){
+		this.method = options.method;
+		this.pattern = options.pattern;
+		this.handler = options.handler;
+
+		this.schemas = options.schemas;
+		
+		this.bodyParser = options.bodyParser;
+		this.responseSerializer = options.responseSerializer;
+		
+		this.httpErrorHandler = options.httpErrorHandler;
+
+		this.logger = options.logger;
+	}
+
+
+	// TEST method logic ? Depend on the route context type ! Especially method !
+
 };
 
 
@@ -57,8 +84,34 @@ export type WSRouteOptions = {
 	logger? : Logger;
 }
 
-export interface WSRoute<CT extends ContextTypes, EC extends any = {}> extends WSRouteOptions{
-	pattern : string;
+
+export class WSRoute<CT extends ContextTypes, EC extends any = {}> {
+	pattern: string;
 	handler: MiddlewareHandler<CT, EC>;
-	registered : boolean;
-}
+	registered : boolean = false;
+
+
+	maxBackPressure? : number;
+	bodyParser? : BodyParser<any>;
+	responseSerializer? : ResponseSerializer<any>;
+	httpErrorHandler? : HTTPErrorHandler;
+	wsErrorHandler? : WSErrorHandler;
+	logger? : Logger;
+
+
+	constructor(options : {pattern : string, handler : MiddlewareHandler<CT, EC>} & WSRouteOptions){
+		this.pattern = options.pattern;
+		this.handler = options.handler;
+		
+		this.maxBackPressure = options.maxBackPressure;
+
+		this.bodyParser = options.bodyParser;
+		this.responseSerializer = options.responseSerializer;
+		
+		this.httpErrorHandler = options.httpErrorHandler;
+		this.wsErrorHandler = options.wsErrorHandler;
+
+		this.logger = options.logger;
+	}
+
+};
