@@ -1,11 +1,12 @@
 {
-  "name": "@core/tsconfig",
-  "private": true,
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "exports": {
-    "./base": "./base.json"
-  }
+	"name": "@core/tsconfig",
+	"private": true,
+	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
+	"exports": {
+		"./base": "./base.json"
+	}
 }
+	

@@ -1,0 +1,17 @@
+{
+	"name": "@mousse/examples",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"check-types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"mousse": "workspace:*"
+	},
+	"devDependencies": {
+		"@core/tsconfig": "workspace:*",
+
+		"@types/node": "^26.1.1",
+		"typescript": "^5.9.2"
+	}
+}

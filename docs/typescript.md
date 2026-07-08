@@ -1,97 +1,67 @@
 # Working with Types
 
-## Context Types
-
-> WIP
-
-## Extend Context Type
-
-With Mousse it is pretty easy to extend Context Type with additionals properties. You basically define your type in the route method generic :
+Mousse is fully typed. Two generic slots drive the typing of a route: the **context types** (what flows through the request/response) and the **context extension** (extra members middlewares attach to the context).
 
 ```ts
-
-type ContextExtension = {
-	myAdditionalProp : boolean;
-	myAdditionalFunction : () => void;
-}
-
-app.get<Types, ContextExtension>('/', 
-	// A middleware can now extends context
-	(c) => {
-		c.myAdditionalProp = true;
-		c.myAdditionalFunction = () => console.log('Hello');
-	},
-	(c) => {
-		// No type errors
-		console.log(c.myAdditionalProp);
-		c.myAdditionalFunction();
-	})
+app.METHOD<ContextTypes, ContextExtension>(pattern, ...handlers);
 ```
-
-You can also define the extension in a router generic, to specify that every routes in the router has an extended context :
-
-```ts
-
-
-
-```
-?? Define only if pattern is '' ?
-?? Allow not using pattern ?
-
-Finally, defining a context extension in the `use` method is pretty special as it will change the extension definition of the returned app or router IF you don't specify a pattern or use the general `''` one :
-
-```ts
-
-	let router = new Router<any, ContextExtension>();
-
-	router = router.use('', )
-```
-
-# Working with Types
 
 ## Context Types
 
-> WIP
-
-## Extend Context Type
-
-With Mousse it is pretty easy to extend Context Type with additionals properties. You basically define your type in the route method generic :
+`ContextTypes` describes the shapes bound to a route:
 
 ```ts
-
-type ContextExtension = {
-	myAdditionalProp : boolean;
-	myAdditionalFunction : () => void;
+type ContextTypes = {
+	Body?: any;       // Type returned by c.body()
+	Response?: any;   // Type accepted by c.json() and handler returns
+	Query?: any;      // Type of c.query
+	Params?: string;  // Union of the route parameter names
 }
+```
 
-app.get<Types, ContextExtension>('/', 
-	// A middleware can now extends context
+When a route declares [schemas](schemas.md), all of this is **inferred automatically** — explicit generics are only needed on schema-less routes:
+
+```ts
+type CreateUser = {
+	Body: { name: string; email: string };
+	Response: { id: number };
+	Params: 'org';
+};
+
+app.post<CreateUser>('/orgs/:org/users', async (c) => {
+	const body = await c.body();   // { name: string; email: string }
+	c.param('org');                // OK
+	c.param('nope');               // Type error
+	return { id: 1 };              // Must match Response
+});
+```
+
+Handlers are also constrained per method: for example `c.body` is not available on `get`/`head`/`options` handlers, and only sustainable methods expose `c.sustain()`.
+
+## Extending the Context
+
+Middlewares often attach data to the context (a user, a session...). Declare the extension in the second generic slot and every function of the route sees it:
+
+```ts
+type Auth = {
+	user: { id: number; name: string };
+};
+
+app.get<any, Auth>('/me',
 	(c) => {
-		c.myAdditionalProp = true;
-		c.myAdditionalFunction = () => console.log('Hello');
+		c.user = lookupUser(c.getHeader('authorization'));
 	},
 	(c) => {
-		// No type errors
-		console.log(c.myAdditionalProp);
-		c.myAdditionalFunction();
-	})
+		return c.user; // typed, no cast needed
+	});
 ```
 
-You can also define the extension in a router generic, to specify that every routes in the router has an extended context :
+An extension can also be declared router-wide, so every route registered on it is typed with the extension by default:
 
 ```ts
+const router = new Router<any, Auth>();
 
-
-
+router.get('/profile', (c) => c.user);
 ```
-?? Define only if pattern is '' ?
-?? Allow not using pattern ?
 
-Finally, defining a context extension in the `use` method is pretty special as it will change the extension definition of the returned app or router IF you don't specify a pattern or use the general `''` one :
-
-```ts
-
-	let router = new Router<any, ContextExtension>();
-
-	router = router.use('', )
-```
+> Note: `use()` currently returns the router unchanged (`this`) for chaining; it does not propagate a new extension type to the returned value. Declare extensions on the router generics or per-route.

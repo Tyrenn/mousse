@@ -6,6 +6,6 @@ app.get('/hello', (req, res) => {
 	res.send('Hello from express')
 })
 
-app.listen(3001, () => {
-	console.log('Express listening on http://localhost:3001')
+app.listen(3012, () => {
+	console.log('Express listening on http://localhost:3012')
 })

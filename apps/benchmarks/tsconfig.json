@@ -1,7 +1,10 @@
 {
 	"extends": "@core/tsconfig/base",
 	"compilerOptions": {
-		"baseUrl": "./src",
-		"outDir": "dist"
-	}
+		"rootDir": "./src",
+		"outDir": "./dist",
+		// Benchmarked frameworks ship type definitions incompatible between themselves : only check our own code
+		"skipLibCheck": true
+	},
+	"include": ["src/**/*"]
 }

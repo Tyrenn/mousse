@@ -1,5 +1,4 @@
-import {Mousse} from '../src/mousse.js';
-import {Context} from '../src/context.js';
+import {Mousse, Context} from 'mousse';
 
 function delay(t : number, val : string) : Promise<string>{
 	return new Promise(function(resolve) {
@@ -14,9 +13,10 @@ async function someAsyncTask() {
 }
 
 const app = new Mousse({
-	key_file_name: 'misc/key.pem',
-	cert_file_name: 'misc/cert.pem',
-	passphrase: '1234'
+	// SSL options : providing key + cert switches to an SSLApp
+	// key_file_name: 'misc/key.pem',
+	// cert_file_name: 'misc/cert.pem',
+	// passphrase: '1234'
 }).get('/*', async (context : Context) => {
 
 	let r = await someAsyncTask();

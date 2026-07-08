@@ -1,0 +1,8 @@
+{
+	"extends": "@core/tsconfig/base",
+	"compilerOptions": {
+		"rootDir": ".",
+		"noEmit": true
+	},
+	"include": ["*.ts"]
+}
