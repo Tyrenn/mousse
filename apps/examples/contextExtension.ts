@@ -1,4 +1,4 @@
-import {Mousse} from '../src/mousse.js';
+import {Mousse} from 'mousse';
 
 type ContextExtension = {
 	myAdditionalProp : boolean;

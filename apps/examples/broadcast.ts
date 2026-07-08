@@ -1,5 +1,4 @@
-import {Mousse} from '../src/mousse.js';
-import {Context} from '../src/context.js';
+import {Mousse, Context} from 'mousse';
 
 const app = new Mousse({
 	// Options
@@ -24,7 +23,7 @@ const app = new Mousse({
 		ws.publish('broadcast', message, isBinary);
 	})
 })
-.setDefaultHandler((c) => c.respond('Nothing to see here !'))
+.setDefaultHandler({handle : (c) => c.respond('Nothing to see here !')})
 .listen(8080, (token, port) => {
 	if (token) {
 		console.log('Listening to port ' + port);
