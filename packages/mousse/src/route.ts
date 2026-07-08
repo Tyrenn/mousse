@@ -1,7 +1,7 @@
 
 
 import { ContextTypes } from "./context.js";
-import { Handler, MiddlewareHandler } from "./handler.js";
+import { Handler, MiddlewareHandler, WSHandler } from "./handler.js";
 import { BodyParser } from "./module/bodyparser.js";
 import { HTTPErrorHandler, WSErrorHandler } from "./module/errorhandler.js";
 import { Logger } from "./module/logger.js";
@@ -96,7 +96,8 @@ export type WSRouteOptions = {
 
 export class WSRoute<CT extends ContextTypes, CE extends any = {}> {
 	pattern: string;
-	handler: MiddlewareHandler<CT, CE>;
+	// Handler of the established connection ; middlewares run on the HTTP upgrade request
+	handler: WSHandler<CT, CE>;
 	// Middlewares dedicated to this route only, applied after the router level ones
 	middlewares? : MiddlewareHandler<any, any>[];
 	registered : boolean = false;
@@ -111,7 +112,7 @@ export class WSRoute<CT extends ContextTypes, CE extends any = {}> {
 	logger? : Logger;
 
 
-	constructor(options : {pattern : string, handler : MiddlewareHandler<CT, CE>, middlewares? : MiddlewareHandler<any, any>[]} & WSRouteOptions){
+	constructor(options : {pattern : string, handler : WSHandler<CT, CE>, middlewares? : MiddlewareHandler<any, any>[]} & WSRouteOptions){
 		this.pattern = options.pattern;
 		this.handler = options.handler;
 		this.middlewares = options.middlewares;

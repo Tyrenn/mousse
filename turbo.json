@@ -16,6 +16,10 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "bench": {
+      "dependsOn": ["^build"],
+      "cache": false
     }
   }
 }

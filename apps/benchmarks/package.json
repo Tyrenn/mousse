@@ -3,7 +3,9 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"check-types": "tsc --noEmit"
+		"check-types": "tsc --noEmit",
+		"build": "tsc",
+		"bench": "tsc && node dist/index.js"
 	},
 	"dependencies": {
 		"mousse": "workspace:*",

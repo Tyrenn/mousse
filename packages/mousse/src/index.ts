@@ -1,6 +1,6 @@
 export { Mousse, type MousseOptions } from './mousse.js';
 export { Router, type RouterOptions, type Middleware } from './router.js';
-export { Context, type ContextTypes, type DefaultContextTypes, type UpgradableContext, type SustainableContext, type WebSocket, type WebSocketEventHandlers } from './context.js';
+export { Context, WSContext, type ContextTypes, type DefaultContextTypes, type UpgradableContext, type SustainableContext, type WebSocket, type WebSocketUserData, type WebSocketEventHandlers } from './context.js';
 export { HTTPRoute, WSRoute, type HTTPRouteOptions, type WSRouteOptions, type HTTPRouteMethod, type RouteDoc } from './route.js';
 export type { Handler, MiddlewareHandler, Handlers, WSHandler, GETHandler, GETHandlers, POSTHandler, POSTHandlers, PUTHandler, PUTHandlers, PATCHHandler, PATCHHandlers, DELHandler, DELHandlers, HEADHandler, HEADHandlers, OPTIONSHandler, OPTIONSHandlers } from './handler.js';
 

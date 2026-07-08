@@ -1,6 +1,6 @@
 import {App as uWSApp, SSLApp as uWSSSLApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
 import { Middleware, Router } from './router.js';
-import { Context, ContextTypes, WebSocket} from './context.js';
+import { Context, ContextTypes, WebSocket, WSContext} from './context.js';
 import { HTTPRoute, WSRoute } from './route.js';
 import { DefaultBodyParser } from './module/bodyparser.js';
 import { DefaultResponseSerializer } from './module/responseserializer.js';
@@ -158,14 +158,14 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		this._app.ws(route.pattern, {
 			upgrade : async (ures, ureq, wsc) => {
-				// Create an upgradable context
+				// Create an upgradable context : middlewares run on the HTTP upgrade request
+				// and can reject the upgrade by responding
 				const context = new Context(this, ureq, ures, route.pattern, params,
 					route.bodyParser ?? new DefaultBodyParser(),
 					route.responseSerializer ?? new DefaultResponseSerializer(),
 					route?.logger,
 					undefined, {socket : wsc, maxBackPressure : route?.maxBackPressure});
 				try{
-					// Middleware on this route are still applied
 					for (let i = 0; i < appliedMiddlewares.length; i++)
 						await appliedMiddlewares[i].handler(context);
 
@@ -173,10 +173,7 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 						for (let i = 0; i < route.middlewares.length; i++)
 							await route.middlewares[i](context);
 
-					// Handler might be default one which won't do anything
-					await route.handler(context);
-
-					// Upgrade (will populate user data with useful data)
+					// No middleware responded : upgrade. The route handler runs at open, connected.
 					if(!context.ended && context.upgradable && !context.upgraded)
 						context.upgrade();
 				} catch(e) {
@@ -200,9 +197,21 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 						ws.getUserData().bufferQueue.push(message);
 						return 0;
 					};
-					const handler = ws.getUserData().handlers.open;
-					if(handler)
-						handler(ws);
+
+					// Open listeners possibly registered by upgrade middlewares run first
+					const openHandler = ws.getUserData().handlers.open;
+					if(openHandler)
+						openHandler(ws);
+
+					// Then the route handler, on an already connected context
+					const result = route.handler(new WSContext(ws, this, route.logger) as any);
+					if(result instanceof Promise)
+						result.catch((e) => {
+							if(route.wsErrorHandler)
+								route.wsErrorHandler.handle(e);
+							else
+								console.error(e);
+						});
 				} catch(e) {
 					if(route.wsErrorHandler)
 						route.wsErrorHandler.handle(e);
@@ -339,6 +348,14 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			if(callback)
 				callback(ls, uWSSocketLocalPort(ls));
 		});
+	}
+
+	/**
+	 * Publish a message to every socket subscribed to the topic, across all ws routes.
+	 * Unlike WSContext.publish, the sender (if any) receives it too.
+	 */
+	publish(topic : RecognizedString, message : RecognizedString, isBinary? : boolean, compress? : boolean){
+		return this._app.publish(topic, message, isBinary, compress);
 	}
 
 	/**

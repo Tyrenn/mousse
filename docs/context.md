@@ -69,4 +69,4 @@ Calling any respond method after the response ended is a no-op — never an erro
 | `c.mousse` | The Mousse instance that created the context |
 | `c.response` | The underlying µWS response, for advanced use |
 
-SSE members (`sustain`, `send`) are documented in [Server-Sent Events](server-sent-events.md), upgrade members (`on*`, `upgrade`) in [WebSockets](websockets.md).
+SSE members (`sustain`, `send`) are documented in [Server-Sent Events](server-sent-events.md). WebSocket route **handlers** receive a different, already-connected `WSContext` — the HTTP `Context` described here is what ws **middlewares** get during the upgrade request ; see [WebSockets](websockets.md).

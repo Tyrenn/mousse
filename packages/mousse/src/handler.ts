@@ -1,4 +1,4 @@
-import { Context, ContextTypes, DefaultContextTypes, SustainableContext, UpgradableContext } from "./context.js";
+import { Context, ContextTypes, DefaultContextTypes, SustainableContext, UpgradableContext, WSContext } from "./context.js";
 
 type GenericHandler<
 	T extends ContextTypes,
@@ -22,7 +22,12 @@ export type Handlers<Types extends ContextTypes = DefaultContextTypes, ContextEx
 // ──────────────────────────
 // │ WS
 // ──────────────────────────
-export type WSHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = GenericHandler<Types, ContextExtension & Omit<Context<Types>, keyof SustainableContext>, true>;
+
+/**
+ * Handler of an established websocket connection : receives a WSContext, not an HTTP Context.
+ * Middlewares of a ws route still receive the HTTP Context of the upgrade request.
+ */
+export type WSHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = (context : ContextExtension & WSContext<Types>) => void | Promise<void>;
 
 
 // ──────────────────────────

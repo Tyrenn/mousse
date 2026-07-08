@@ -6,6 +6,6 @@ webserver.get('/hello', (c) => {
 	c.respond('Hello from Mousse');
 });
 
-webserver.listen(3000, (ls) => {
-	console.log("Mousse is listening", ls)
+webserver.listen(3011, (ls) => {
+	if (ls) console.log("Mousse listening on http://localhost:3011");
 });

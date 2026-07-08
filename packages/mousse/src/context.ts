@@ -11,9 +11,26 @@ import { HTTPRouteMethod } from './route.js';
 import { Schemas, validateSchema, validateSchemaSync } from './module/schema.js';
 
 /**
+ * Data carried by each websocket connection
+ */
+export type WebSocketUserData = {
+	handlers : Partial<WebSocketEventHandlers>;
+	maxBackPressure : number;
+	bufferQueue : RecognizedString[];
+	// Request data snapshotted at upgrade time, exposed by WSContext once connected
+	snapshot : {
+		params : Record<string, string>;
+		query : Record<string, any>;
+		headers : Record<string, string>;
+		url : string;
+		route : string;
+	};
+};
+
+/**
  * Enhanced websocket
  */
-export type WebSocket = uWSWebSocket<{handlers : Partial<WebSocketEventHandlers>, maxBackPressure : number, bufferQueue : RecognizedString[]}>;
+export type WebSocket = uWSWebSocket<WebSocketUserData>;
 
 /**
  * Websocket listenable event keys and their handler type
@@ -680,7 +697,14 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._ures.upgrade({
 			handlers : this._wsEventHandlers,
 			bufferQueue : [],
-			maxBackPressure : this._maxBackPressure
+			maxBackPressure : this._maxBackPressure,
+			snapshot : {
+				params : this._params,
+				query : this.query,
+				headers : this._reqHeaders,
+				url : this._url,
+				route : this._route
+			}
 		},
 			this._reqHeaders['sec-websocket-key'] ?? '',
 			this._reqHeaders['sec-websocket-protocol'] ?? '',
@@ -689,5 +713,132 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		);
 	}
 
+}
+
+
+/**
+ * Context handed to a ws route handler : the connection is already established.
+ * Wraps the native socket with backpressure-safe send, pub/sub helpers, event
+ * registration, and the request data snapshotted at upgrade time.
+ */
+export class WSContext<Types extends ContextTypes = DefaultContextTypes>{
+
+	private _ws : WebSocket;
+
+	private _mousse : Mousse;
+
+	private _logger? : Logger;
+
+	constructor(ws : WebSocket, mousse : Mousse, logger? : Logger){
+		this._ws = ws;
+		this._mousse = mousse;
+		this._logger = logger;
+	}
+
+	private get _userData(){
+		return this._ws.getUserData();
+	}
+
+
+// -- OTHER METHODS
+
+	log(data? : any){
+		this._logger?.log(data);
+	}
+
+	// The mousse instance : c.mousse.publish() broadcasts app-wide (all ws routes)
+	get mousse(){
+		return this._mousse;
+	}
+
+	// The underlying uWS socket, for advanced use
+	get socket(){
+		return this._ws;
+	}
+
+
+// -- 🌐 ORIGINAL REQUEST DATA (snapshotted at upgrade time)
+
+	get params() : Record<Types["Params"] extends string ? Types["Params"] : string, string> {
+		return this._userData.snapshot.params;
+	}
+
+	param(key: Types["Params"] extends string ? Types["Params"] : string) : string | undefined {
+		return this._userData.snapshot.params[key.toLowerCase()];
+	}
+
+	get query() : Types["Query"] extends object ? Types["Query"] : { [key: string]: any } {
+		return this._userData.snapshot.query;
+	}
+
+	get headers() : { [key: string]: string } {
+		return this._userData.snapshot.headers;
+	}
+
+	getHeader(key : string) : string | null {
+		return this._userData.snapshot.headers[key.toLowerCase()] ?? null;
+	}
+
+	get url(){
+		return this._userData.snapshot.url;
+	}
+
+	get route(){
+		return this._userData.snapshot.route;
+	}
+
+
+// -- ⚡ SOCKET METHODS
+
+	/**
+	 * Send a message through the socket. Backpressure is handled : messages exceeding
+	 * the route maxBackPressure are queued and flushed in order on drain.
+	 */
+	send(message : RecognizedString, isBinary? : boolean, compress? : boolean){
+		return this._ws.send(message, isBinary, compress);
+	}
+
+	subscribe(topic : RecognizedString){
+		return this._ws.subscribe(topic);
+	}
+
+	unsubscribe(topic : RecognizedString){
+		return this._ws.unsubscribe(topic);
+	}
+
+	/**
+	 * Publish to sockets of THIS route subscribed to the topic, excluding the sender.
+	 * uWS scopes its topic tree per ws route : to reach subscribers across all routes
+	 * (or include the sender), use c.mousse.publish() instead.
+	 */
+	publish(topic : RecognizedString, message : RecognizedString, isBinary? : boolean, compress? : boolean){
+		return this._ws.publish(topic, message, isBinary, compress);
+	}
+
+	/**
+	 * Gracefully close the connection with an optional code and message
+	 */
+	end(code? : number, shortMessage? : RecognizedString){
+		this._ws.end(code, shortMessage);
+	}
+
+
+// -- ⚡ EVENT REGISTRATION
+
+	on<Event extends keyof WebSocketEventHandlers>(type: Event, listener: WebSocketEventHandlers[Event]){
+		this._userData.handlers[type] = listener;
+	}
+
+	off<Event extends keyof WebSocketEventHandlers>(type : Event){
+		delete this._userData.handlers[type];
+	}
+
+	onMessage(listener : WebSocketEventHandlers["message"]){ this._userData.handlers["message"] = listener; }
+	onClose(listener : WebSocketEventHandlers["close"]){ this._userData.handlers["close"] = listener; }
+	onDrain(listener : WebSocketEventHandlers["drain"]){ this._userData.handlers["drain"] = listener; }
+	onDropped(listener : WebSocketEventHandlers["dropped"]){ this._userData.handlers["dropped"] = listener; }
+	onPing(listener : WebSocketEventHandlers["ping"]){ this._userData.handlers["ping"] = listener; }
+	onPong(listener : WebSocketEventHandlers["pong"]){ this._userData.handlers["pong"] = listener; }
+	onSubscription(listener : WebSocketEventHandlers["subscription"]){ this._userData.handlers["subscription"] = listener; }
 }
 

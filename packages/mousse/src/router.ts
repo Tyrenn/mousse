@@ -110,25 +110,28 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	}
 
 	/**
-	 * 
-	 * @param pattern 
-	 * @param args 
-	 * @returns 
+	 * ⚡ Register a websocket route.
+	 * The last function is the connection handler and receives a WSContext (already upgraded).
+	 * Functions before it are middlewares running on the HTTP upgrade request : responding
+	 * through the context rejects the upgrade.
+	 * @param pattern
+	 * @param args
+	 * @returns
 	 */
-	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [WSRouteOptions | WSHandler<CT, EC>, ...WSHandler<CT, EC>[]]) : this {
+	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string) : this;
+	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : WSRouteOptions, ...handlers : [...MiddlewareHandler<CT, EC>[], WSHandler<CT, EC>]) : this;
+	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : [...MiddlewareHandler<CT, EC>[], WSHandler<CT, EC>]) : this;
+	ws<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : Array<WSRouteOptions | MiddlewareHandler<CT, EC> | WSHandler<CT, EC>>) : this {
 		if(args.length < 1){
 			this._wsroutes.push(new WSRoute({...this._defaultRouteOptions, pattern, handler : () => {}}));
-		}
-		else if(args.length == 1 && typeof args[0] === "function"){
-			this._wsroutes.push(new WSRoute({...this._defaultRouteOptions, pattern, handler : args[0]}));
 		}
 		else if(args.length == 1 && typeof args[0] !== "function"){
 			this._wsroutes.push(new WSRoute({...this._defaultRouteOptions, pattern, handler : () => {}, ...args[0]}));
 		}
 		else{
-			const handler = args.pop() as MiddlewareHandler<CT, EC>;
+			const handler = args.pop() as WSHandler<CT, EC>;
 			const options = typeof args[0] === "function" ? undefined : args.shift() as WSRouteOptions;
-			// Remaining handlers are middlewares scoped to this route only
+			// Remaining functions are upgrade middlewares scoped to this route only
 			this._wsroutes.push(new WSRoute({...this._defaultRouteOptions, pattern, handler, ...options, middlewares : args as MiddlewareHandler<any, any>[]}));
 		}
 
