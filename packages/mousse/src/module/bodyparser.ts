@@ -1,9 +1,21 @@
 import { getParts } from 'uWebSockets.js';
-import { parseQuery } from '../utils.js';
-import { Serializer } from './index.js';
+import { parseQueryString } from '../utils.js';
 
-export class DefaultSerializer implements Serializer<any>{
-	serializeBody<Body extends any>(raw?: Buffer<ArrayBufferLike>, contentType?: string){
+
+export interface BodyParser<SchemaDefault extends any>{
+
+	/**
+	 * Translate body from its buffer raw form to a Body typed object
+	 * @param raw
+	 * @param contentType
+	 * @param schema
+	 */
+	parse<Body extends any, BodySchema extends SchemaDefault>(raw? : Buffer<ArrayBufferLike>, contentType? : string, schema? : BodySchema) : Promise<Body> | Body;
+}
+
+
+export class DefaultBodyParser implements BodyParser<any>{
+	parse<Body extends any>(raw?: Buffer<ArrayBufferLike>, contentType?: string){
 		if(!contentType || !raw?.length)
 			return {} as Body;
 
@@ -14,7 +26,7 @@ export class DefaultSerializer implements Serializer<any>{
 
 		if(contentType === 'application/x-www-form-urlencoded'){
 			const bodyStr = raw.toString();
-			return bodyStr ? parseQuery(bodyStr) as Body : {} as Body;
+			return bodyStr ? parseQueryString(bodyStr) as Body : {} as Body;
 		}
 
 		if (contentType.startsWith('multipart/form-data')) {
@@ -32,9 +44,5 @@ export class DefaultSerializer implements Serializer<any>{
 		}
 
 		return raw as Body;
-	}
-
-	serializeResponse<Response extends unknown>(res?: Response | undefined){
-		return JSON.stringify(res ?? {});
 	}
 }

@@ -2,15 +2,35 @@ import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpRes
 import { readFile } from 'fs/promises';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
-import type { Mousse } from './index.js';
-import { parseQuery } from './utils.js';
-import { HTTPRouteMethod } from './router.js';
-import { Serializer } from './serializer/index.js';
+import type { Mousse } from './mousse.js';
+import { parseQueryString } from './utils.js';
+import { BodyParser } from './module/bodyparser.js';
+import { ResponseSerializer } from './module/responseserializer.js';
+import { Logger } from './module/logger.js';
+import { HTTPRouteMethod } from './route.js';
+import { Schemas, validateSchema, validateSchemaSync } from './module/schema.js';
+
+/**
+ * Data carried by each websocket connection
+ */
+export type WebSocketUserData = {
+	handlers : Partial<WebSocketEventHandlers>;
+	maxBackPressure : number;
+	bufferQueue : RecognizedString[];
+	// Request data snapshotted at upgrade time, exposed by WSContext once connected
+	snapshot : {
+		params : Record<string, string>;
+		query : Record<string, any>;
+		headers : Record<string, string>;
+		url : string;
+		route : string;
+	};
+};
 
 /**
  * Enhanced websocket
  */
-export type WebSocket = uWSWebSocket<{handlers : Partial<WebSocketEventHandlers>, maxBackPressure : number, bufferQueue : RecognizedString[]}>;
+export type WebSocket = uWSWebSocket<WebSocketUserData>;
 
 /**
  * Websocket listenable event keys and their handler type
@@ -29,9 +49,11 @@ export type WebSocketEventHandlers = {
 export type ContextTypes = {
 	Body? : any;
 	Response? : any;
+	Query? : any;
 	Params? : string;
 }
-type DefaultContextTypes = {Body : any, Response : any};
+
+export type DefaultContextTypes = {Body : any, Response : any};
 
 // Pattern is string if types is undefined and :str/... if defined
 
@@ -68,16 +90,21 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// The mousse instance that has created the context
 	private _mousse : Mousse;
 
+	private _logger? : Logger;
 
-//// *
-// * Request related attributes
-//// *
+
+
+// 🌐 --- Request related attributes
 
 	// uWebSocket.js request
 	private _ureq : uHttpRequest;
 
-	// Method
-	private _method? : HTTPRouteMethod;
+	// Actual request method snapshotted at construction ('get', 'post', 'delete'...)
+	private _method : string;
+
+	// Request url and query string snapshotted at construction
+	private _url : string;
+	private _queryString : string;
 
 	// The route pattern
 	private _route : string;
@@ -86,21 +113,33 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	private _bodyParsed? : Types["Body"];
 
-	//
-	private _schemas? : {Body? : any, Response? : any};
+	// Body chunks are consumed as soon as the context is built, otherwise uWS drops
+	// any chunk arriving before onData is attached (typically after an await)
+	private _bodyRawPromise? : Promise<Buffer>;
 
-	private _serializer : Serializer<any>;
+	private _bodyReject? : (reason : Error) => void;
+
+	//
+	private _schemas? : Schemas;
+
+
+	private _bodyParser : BodyParser<any>;
+
+	private _responseSerializer : ResponseSerializer<any>;
+
 
 	// Populated param
 	private _params: Record<string, string> = {};
+
+	// Parsed (and possibly schema validated) query, cached
+	private _query? : Record<string, any>;
 
 	// Request headers
 	private _reqHeaders : Record<string, string> = {};
 
 
-//// *
-// * Response related attributes
-//// *
+
+// 🌐 -- Response related attributes
 
 	// uWebSocket.js response
 	private _ures : uHttpResponse;
@@ -118,9 +157,10 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _ended : boolean = false;
 
 
-//// *
-// * SSE related attributes
-//// *
+
+// -- SSE related attributes
+
+
 	private _sustainable : boolean = false;
 
 	private _sustained : boolean = false;
@@ -130,9 +170,9 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _isDraining : boolean = false;
 
 
-//// *
-// * WS related attributes
-//// *
+
+// -- WS related attributes
+
 	private _upgradable : boolean = false;
 
 	//
@@ -146,16 +186,24 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _maxBackPressure : number;
 
 
-	constructor(mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], serializer : Serializer<any>, http? : {method? : HTTPRouteMethod, schemas ? : {Body? : any, Response? : any};}, ws? : {socket? : uWSSocketContext, maxBackPressure? : number}) {
+
+
+	constructor(
+		mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], 
+		bodyParser : BodyParser<any>, responseSerializer : ResponseSerializer<any>, logger? : Logger,
+		http? : {method? : HTTPRouteMethod, schemas? : Schemas},
+		ws? : {socket? : uWSSocketContext, maxBackPressure? : number}
+	) {
 		this._mousse = mousse;
 
 		this._ureq = req;
 		this._ures = res;
 		this._route = route;
 
-		this._serializer = serializer;
+		this._bodyParser = bodyParser;
+		this._responseSerializer = responseSerializer;
+		this._logger = logger;
 
-		this._method = http?.method;
 		this._schemas = http?.schemas;
 		this._sustainable = !!http?.method && (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(http?.method);
 
@@ -164,6 +212,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._maxBackPressure = ws?.maxBackPressure ?? 16 * 1024; // 16kb default
 
 
+		// The uWS request is stack-allocated and unusable once the handler awaits :
+		// everything needed later must be snapshotted right now
+		this._method = this._ureq.getMethod();
+		this._url = this._ureq.getUrl();
+		this._queryString = this._ureq.getQuery() ?? '';
+
 		// Populate params
 		for (let i = 0; i < params.length; i++)
 			this._params[params[i].slice(1).toLowerCase()] = this._ureq.getParameter(i)!;
@@ -171,12 +225,20 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		// Populate headers
 		this._ureq.forEach((key, value) => this._reqHeaders[key] = value);
 
+		// Start consuming body chunks immediately : uWS drops chunks arriving before onData is attached
+		if(!ws && ['post', 'put', 'patch', 'delete'].includes(this._method)){
+			this._bodyRawPromise = this._getBodyRaw(res);
+			// Mark a potential abort rejection as handled to avoid unhandledRejection when body is never read
+			this._bodyRawPromise.catch(() => {});
+		}
+
 		// Bind the abort handler as required by uWebsockets.js for each uWS.HttpResponse to allow for async processing
 		// https://github.com/uNetworking/uWebSockets.js/blob/master/examples/AsyncFunction.js
       res.onAborted(() => {
 			if (this._ended)
 				return;
 			this._ended = true;
+			this._bodyReject?.(new Error('Request aborted'));
 		});
 	}
 
@@ -186,18 +248,30 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	}
 
 
-//// *
-// * OTHER METHODS
-//// *
+// -- OTHER METHODS
 
 	log(data? : any){
-		this._mousse.log(data);
+		this._logger?.log(data);
+	}
+
+	/**
+	 * Validate params and query against the route schemas, replacing them with the validated
+	 * (possibly transformed) values. Called by the route pipeline before any middleware.
+	 * @internal
+	 */
+	async applySchemas(){
+		if(!this._schemas)
+			return;
+
+		if(this._schemas.Params)
+			this._params = await validateSchema(this._schemas.Params, 'params', this._params) as Record<string, string>;
+
+		if(this._schemas.Query)
+			this._query = await validateSchema(this._schemas.Query, 'query', this.query) as Record<string, any>;
 	}
 
 
-//// *
-// * REQUEST METHODS
-//// *
+// -- 🌐 REQUEST METHODS
 
 	get request(){
 		return this._ureq;
@@ -211,21 +285,26 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private async _getBodyRaw(res : uHttpResponse): Promise<Buffer>{
 		let buffer : Buffer;
 
-		return new Promise(resolve => res.onData((ab, isLast) => {
-			const chunk = Buffer.from(ab);
+		return new Promise((resolve, reject) => {
+			this._bodyReject = reject;
 
-			if (isLast) {
-				if (buffer)
-					resolve(Buffer.concat([buffer, chunk]));
-				else
-					resolve(chunk);
-			} else {
-				if (buffer)
-					buffer = Buffer.concat([buffer, chunk]);
-				else
-					buffer = Buffer.concat([chunk]);
-			}
-		}));
+			res.onData((ab, isLast) => {
+				// The ArrayBuffer is only valid during this callback : copy it
+				const chunk = Buffer.from(ab.slice(0));
+
+				if (isLast) {
+					if (buffer)
+						resolve(Buffer.concat([buffer, chunk]));
+					else
+						resolve(chunk);
+				} else {
+					if (buffer)
+						buffer = Buffer.concat([buffer, chunk]);
+					else
+						buffer = chunk;
+				}
+			});
+		});
 	};
 
 	/**
@@ -235,20 +314,30 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	async body(raw : true) : Promise<Buffer | null>;
 	async body(raw? : false) : Promise<Types["Body"]>;
 	async body(raw? : boolean) : Promise<Types["Body"] | Buffer | null>  {
-		if(!raw && this._bodyParsed)
+		if(!raw && this._bodyParsed !== undefined)
 			return this._bodyParsed;
 
 		if(raw && this._bodyRaw)
 			return this._bodyRaw;
 
-		if(!this._method || !(['post', 'put', 'patch'] as HTTPRouteMethod[]).includes(this._method))
+		// No body consumption started : request method has no body
+		if(!this._bodyRawPromise)
 			return raw ? null : {} as Types["Body"];
 
-		const contentType = this._ureq.getHeader('content-type');
-		this._bodyRaw = await this._getBodyRaw(this._ures);
-		this._bodyParsed = await this._serializer.serializeBody(this._bodyRaw, contentType, this._schemas?.Body);
+		if(!this._bodyRaw)
+			this._bodyRaw = await this._bodyRawPromise;
 
-		return raw ? this._bodyRaw : ((this._bodyParsed ?? {}) as Types["Body"]);
+		if(raw)
+			return this._bodyRaw;
+
+		let parsed = await this._bodyParser.parse(this._bodyRaw, this._reqHeaders['content-type'], this._schemas?.Body);
+
+		if(this._schemas?.Body)
+			parsed = await validateSchema(this._schemas.Body, 'body', parsed);
+
+		this._bodyParsed = parsed;
+
+		return (this._bodyParsed ?? {}) as Types["Body"];
 	}
 
 	/**
@@ -264,14 +353,14 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 * @returns
 	 */
 	getHeader(key : string) : string | null {
-		return this._ureq.getHeader(key.toLowerCase());
+		return this._reqHeaders[key.toLowerCase()] ?? null;
 	}
 
 	/**
 	 * @returns
 	 */
 	method() {
-		return this._ureq.getMethod();
+		return this._method;
 	}
 
 	/**
@@ -288,46 +377,46 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 * @returns
 	 */
 	param(key: Types["Params"] extends string ? Types["Params"] : string) : string | undefined {
-		return Object.keys(this._params).includes(key.toLowerCase()) ? this._params[key.toLowerCase()] : undefined;
+		return this._params[key.toLowerCase()];
 	}
 
 
 	/**
 	 */
-	get query(): { [key: string]: any } {
-		const query = this._ureq.getQuery();
+	get query(): Types["Query"] extends object ? Types["Query"] : { [key: string]: any } {
+		if (!this._query)
+			this._query = this._queryString ? parseQueryString(this._queryString) : {};
 
-		if (query)
-			return parseQuery(query);
-
-		return {};
+		return this._query;
 	}
 
 	/**
 	 */
 	get url() {
-		return this._ureq.getUrl();
+		return this._url;
 	}
 
 
 	contentType() {
-		return this._ureq.getHeader('content-type');
+		return this._reqHeaders['content-type'] ?? '';
 	}
 
 
 
 
 
-//// *
-// * RESPONSE METHODS
-//// *
+// -- 🌐 RESPONSE METHODS
 
 	get response(){
 		return this._ures;
 	}
 
-	//*
-
+	/**
+	 * 
+	 * @param code 
+	 * @param message 
+	 * @returns 
+	 */
 	status(code: number, message? : string) {
 		this._statusCode = code;
 		this._statusMessage = message;
@@ -341,9 +430,6 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		return this._statusCode;
 	}
 
-	/**
-	*
-	*/
 	/**
 	 * Set the response content type header based on the provided mime type. Example: type('json')
 	 * @param filenameOrExt file extension or mime types
@@ -371,7 +457,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			return this;
 		}
 
-		if(typeof field === 'string' && !value)
+		if(typeof field === 'string' && value === undefined)
 			throw new Error('Header value is required');
 
       this._headers[field.toLowerCase()] = value!;
@@ -455,12 +541,16 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 */
    json(body : Types["Response"], status? : {code : number, message? : string}) {
 		if(this._upgraded)
-			return;
+			return this;
 
 		if(status)
 			this.status(status.code, status.message);
 
-		return this.header('content-type', 'application/json').respond(this._serializer.serializeResponse(body, this._schemas?.Response));
+		// Response schema validation is synchronous by design : serialization cannot await
+		if(this._schemas?.Response)
+			body = validateSchemaSync(this._schemas.Response, 'response', body) as Types["Response"];
+
+		return this.header('content-type', 'application/json').respond(this._responseSerializer.serialize(body, this._schemas?.Response));
    }
 
 
@@ -471,7 +561,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 */
 	html(body : string, status? : {code : number, message? : string}) {
 		if(this._upgraded)
-			return;
+			return this;
 
 		if(status)
 			this.status(status.code, status.message);
@@ -510,9 +600,11 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(this._sustained)
 			return;
 
-		this._ures.writeHeader('content-type', 'text/event-stream');
-		this._ures.writeHeader('connection', 'keep-alive');
-		this._ures.writeHeader('cache-control', 'no-cache');
+		this._ures.cork(() => {
+			this._ures.writeHeader('content-type', 'text/event-stream');
+			this._ures.writeHeader('connection', 'keep-alive');
+			this._ures.writeHeader('cache-control', 'no-cache');
+		});
 
 		this._sustained = true;
 	}
@@ -524,10 +616,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._isDraining = true;
 
 		let wrote = true;
-		while (wrote && this._eventQueue.length > 0) {
-			const message = this._eventQueue.shift()!;
-			wrote = this._ures.write(`data: ${message}\n\n`);
-		}
+		this._ures.cork(() => {
+			while (wrote && this._eventQueue.length > 0) {
+				const message = this._eventQueue.shift()!;
+				wrote = this._ures.write(`data: ${message}\n\n`);
+			}
+		});
 
 		if (!wrote) {
 			this._ures.onWritable(() => {
@@ -599,112 +693,152 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			return;
 
 		this._upgraded = true;
+		// Headers come from the snapshot : the uWS request is not usable anymore if an await occurred
 		this._ures.upgrade({
 			handlers : this._wsEventHandlers,
 			bufferQueue : [],
-			maxBackPressure : this._maxBackPressure
+			maxBackPressure : this._maxBackPressure,
+			snapshot : {
+				params : this._params,
+				query : this.query,
+				headers : this._reqHeaders,
+				url : this._url,
+				route : this._route
+			}
 		},
-			/* Spell these correctly */
-			this._ureq.getHeader('sec-websocket-key'),
-			this._ureq.getHeader('sec-websocket-protocol'),
-			this._ureq.getHeader('sec-websocket-extensions'),
+			this._reqHeaders['sec-websocket-key'] ?? '',
+			this._reqHeaders['sec-websocket-protocol'] ?? '',
+			this._reqHeaders['sec-websocket-extensions'] ?? '',
 			this._socketContext
 		);
 	}
 
-	// ? What about closing ws ??
 }
 
 
 /**
- * * HANDLERS TYPES
+ * Context handed to a ws route handler : the connection is already established.
+ * Wraps the native socket with backpressure-safe send, pub/sub helpers, event
+ * registration, and the request data snapshotted at upgrade time.
  */
+export class WSContext<Types extends ContextTypes = DefaultContextTypes>{
+
+	private _ws : WebSocket;
+
+	private _mousse : Mousse;
+
+	private _logger? : Logger;
+
+	constructor(ws : WebSocket, mousse : Mousse, logger? : Logger){
+		this._ws = ws;
+		this._mousse = mousse;
+		this._logger = logger;
+	}
+
+	private get _userData(){
+		return this._ws.getUserData();
+	}
 
 
-type GenericHandler<
-	T extends ContextTypes,
-	C extends any,
-	Passive extends boolean = false
-> = (
-	context: C
-) => Passive extends true ? (void | Promise<void>) : (void | T["Response"] | Promise<void | T["Response"]>);
+// -- OTHER METHODS
 
-/**
- * General
- */
+	log(data? : any){
+		this._logger?.log(data);
+	}
 
-export type Handler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Context<Types>>;
-export type MiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Context<Types>, true>;
+	// The mousse instance : c.mousse.publish() broadcasts app-wide (all ws routes)
+	get mousse(){
+		return this._mousse;
+	}
 
-export type Handlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...MiddlewareHandler<Types, ExtendContext>[], Handler<Types, ExtendContext>];
-
-
-/**
- * WS handlers Types
- */
-export type WSHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext>, true>;
+	// The underlying uWS socket, for advanced use
+	get socket(){
+		return this._ws;
+	}
 
 
-/**
- * POST handlers Types
- */
-export type POSTHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof UpgradableContext>>;
+// -- 🌐 ORIGINAL REQUEST DATA (snapshotted at upgrade time)
 
-export type POSTMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof UpgradableContext>, true>;
+	get params() : Record<Types["Params"] extends string ? Types["Params"] : string, string> {
+		return this._userData.snapshot.params;
+	}
 
-export type POSTHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...POSTMiddlewareHandler<Types, ExtendContext>[], POSTHandler<Types, ExtendContext>];
+	param(key: Types["Params"] extends string ? Types["Params"] : string) : string | undefined {
+		return this._userData.snapshot.params[key.toLowerCase()];
+	}
 
-/**
- * PUT handlers Types
- */
-export type PUTHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
+	get query() : Types["Query"] extends object ? Types["Query"] : { [key: string]: any } {
+		return this._userData.snapshot.query;
+	}
 
-export type PUTMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
+	get headers() : { [key: string]: string } {
+		return this._userData.snapshot.headers;
+	}
 
-export type PUTHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...PUTMiddlewareHandler<Types, ExtendContext>[], PUTHandler<Types, ExtendContext>];
+	getHeader(key : string) : string | null {
+		return this._userData.snapshot.headers[key.toLowerCase()] ?? null;
+	}
 
-/**
- * PATCH handlers Types
- */
-export type PATCHHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
+	get url(){
+		return this._userData.snapshot.url;
+	}
 
-export type PATCHMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type PATCHHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...PATCHMiddlewareHandler<Types, ExtendContext>[], PATCHHandler<Types, ExtendContext>];
-
-/**
- * Head handlers Types
- */
-export type HEADHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
-
-export type HEADMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type HEADHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...HEADMiddlewareHandler<Types, ExtendContext>[], HEADHandler<Types, ExtendContext>];
-
-/**
- * Options handlers Types
- */
-export type OPTIONSHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
-
-export type OPTIONSMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
-
-export type OPTIONSHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...OPTIONSMiddlewareHandler<Types, ExtendContext>[], OPTIONSHandler<Types, ExtendContext>];
-
-/**
- * Get
- */
-export type GETHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof UpgradableContext>>;
-
-export type GETMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof UpgradableContext>, true>;
-
-export type GETHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...GETMiddlewareHandler<Types, ExtendContext>[], GETHandler<Types, ExtendContext>];
+	get route(){
+		return this._userData.snapshot.route;
+	}
 
 
-/**
- * DELETE Specific handlers
- */
-export type DELHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
+// -- ⚡ SOCKET METHODS
 
-export type DELMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = GenericHandler<Types, ExtendContext & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
+	/**
+	 * Send a message through the socket. Backpressure is handled : messages exceeding
+	 * the route maxBackPressure are queued and flushed in order on drain.
+	 */
+	send(message : RecognizedString, isBinary? : boolean, compress? : boolean){
+		return this._ws.send(message, isBinary, compress);
+	}
 
-export type DELHandlers<Types extends ContextTypes = DefaultContextTypes, ExtendContext extends any = {}> = [...DELMiddlewareHandler<Types, ExtendContext>[], DELHandler<Types, ExtendContext>];
+	subscribe(topic : RecognizedString){
+		return this._ws.subscribe(topic);
+	}
+
+	unsubscribe(topic : RecognizedString){
+		return this._ws.unsubscribe(topic);
+	}
+
+	/**
+	 * Publish to sockets of THIS route subscribed to the topic, excluding the sender.
+	 * uWS scopes its topic tree per ws route : to reach subscribers across all routes
+	 * (or include the sender), use c.mousse.publish() instead.
+	 */
+	publish(topic : RecognizedString, message : RecognizedString, isBinary? : boolean, compress? : boolean){
+		return this._ws.publish(topic, message, isBinary, compress);
+	}
+
+	/**
+	 * Gracefully close the connection with an optional code and message
+	 */
+	end(code? : number, shortMessage? : RecognizedString){
+		this._ws.end(code, shortMessage);
+	}
+
+
+// -- ⚡ EVENT REGISTRATION
+
+	on<Event extends keyof WebSocketEventHandlers>(type: Event, listener: WebSocketEventHandlers[Event]){
+		this._userData.handlers[type] = listener;
+	}
+
+	off<Event extends keyof WebSocketEventHandlers>(type : Event){
+		delete this._userData.handlers[type];
+	}
+
+	onMessage(listener : WebSocketEventHandlers["message"]){ this._userData.handlers["message"] = listener; }
+	onClose(listener : WebSocketEventHandlers["close"]){ this._userData.handlers["close"] = listener; }
+	onDrain(listener : WebSocketEventHandlers["drain"]){ this._userData.handlers["drain"] = listener; }
+	onDropped(listener : WebSocketEventHandlers["dropped"]){ this._userData.handlers["dropped"] = listener; }
+	onPing(listener : WebSocketEventHandlers["ping"]){ this._userData.handlers["ping"] = listener; }
+	onPong(listener : WebSocketEventHandlers["pong"]){ this._userData.handlers["pong"] = listener; }
+	onSubscription(listener : WebSocketEventHandlers["subscription"]){ this._userData.handlers["subscription"] = listener; }
+}
+
