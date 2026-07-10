@@ -1,5 +1,8 @@
 export function joinUri(patternParent : string, patternChild : string) {
-	return `${patternParent.replace(/\/+$/, '')}/${patternChild.replace(/^\/+/, '')}`;
+	const joined = `${patternParent.replace(/\/+$/, '')}/${patternChild.replace(/^\/+/, '')}`;
+
+	// No trailing slash : a '/' route mounted on '/users' must answer GET /users
+	return joined.replace(/\/+$/, '') || '/';
 }
 
 /**

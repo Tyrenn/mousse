@@ -6,7 +6,7 @@ import { BodyParser } from "./module/bodyparser.js";
 import { HTTPErrorHandler, WSErrorHandler } from "./module/errorhandler.js";
 import { Logger } from "./module/logger.js";
 import { ResponseSerializer } from "./module/responseserializer.js";
-import { Schemas } from "./module/schema.js";
+import { Schemas } from "./schema.js";
 
 /**
  * Route documentation metadata, consumed by DocGen modules

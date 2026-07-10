@@ -1,10 +1,12 @@
-# Schemas : validation, typing & documentation
+[« Documentation index](../README.md#documentation)
+
+# Schemas: validation, typing and documentation
 
 Routes accept a `schemas` option describing the request and response data. Mousse uses it for three things:
 
 1. **Runtime validation** — invalid requests are rejected before your handler runs
 2. **Static typing** — handler types are inferred from the schemas, no generics to write
-3. **Documentation** — the same schemas feed the documentation generator (work in progress)
+3. **Documentation** — the same schemas feed the [documentation generators](docgen.md)
 
 ## Standard Schema
 
@@ -50,8 +52,8 @@ Handler and middleware types are **inferred from the schemas**: no explicit gene
 | `Body` | At the first `c.body()` call | `400` |
 | `Response` | Inside `c.json()`, before serialization | `500` |
 
-- A route without schemas validates nothing : zero overhead.
-- Body validation is lazy by design : a handler that never reads the body never pays for it.
+- A route without schemas validates nothing: zero overhead.
+- Body validation is lazy by design: a handler that never reads the body never pays for it.
 - `Response` schemas must validate **synchronously** (serialization cannot await). Async refinements are fine everywhere else.
 
 ## Validation failures
@@ -67,7 +69,7 @@ Without a custom error handler, an invalid request gets a `400` with the issues 
 }
 ```
 
-An invalid **response** is a server bug : the client gets an empty `500` and the error is logged.
+An invalid **response** is a server bug: the client gets an empty `500` and the error is logged.
 
 To customize this behavior, set an `httpErrorHandler` (per route or as a router default) and check for `SchemaValidationError`:
 
@@ -99,14 +101,19 @@ The defaults ignore it, and validation is handled by Mousse either way — a cus
 
 ## Typing without schemas
 
-Schemas are optional. Routes without them fall back to the explicit generic form described in [Working with types](typescript.md):
+Schemas are optional. Routes without them fall back to the explicit generic form described in [Typescript](typescript.md):
 
 ```ts
 app.post<MyContextTypes>('/legacy', handler);
 ```
 
-Note : when `schemas` is provided, inference always wins over explicit generics on the helper methods.
+Note: when `schemas` is provided, inference always wins over explicit generics on the helper methods.
 
 ## Documentation generation
 
-The second purpose of route schemas is documentation — see [Documentation generation](docgen.md) for the full pipeline : `SchemaParser` per library, OpenAPI 3.1 output, and Mousse's own HTML renderer.
+The second purpose of route schemas is documentation — see [Documentation generation](docgen.md) for the full pipeline: one `DocSchemaTranslator` per schema library, OpenAPI 3.1 output, and Mousse's own HTML renderer.
+
+---
+
+| [« Typescript](typescript.md) | [Documentation index](../README.md#documentation) | [Testing routes »](testing.md) |
+|:---|:---:|---:|

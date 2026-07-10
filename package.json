@@ -6,7 +6,10 @@
 		"dev": "turbo run dev",
 		"lint": "turbo run lint",
 		"check-types": "turbo run check-types",
-		"bench": "turbo run bench"
+		"bench": "turbo run bench",
+		"test": "turbo run test",
+		"example": "pnpm --filter @mousse/examples start",
+		"release": "turbo run build check-types test && changeset publish"
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.31.0",

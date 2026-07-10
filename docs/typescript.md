@@ -1,4 +1,6 @@
-# Working with Types
+[« Documentation index](../README.md#documentation)
+
+# Typescript
 
 Mousse is fully typed. Two generic slots drive the typing of a route: the **context types** (what flows through the request/response) and the **context extension** (extra members middlewares attach to the context).
 
@@ -65,3 +67,8 @@ router.get('/profile', (c) => c.user);
 ```
 
 > Note: `use()` currently returns the router unchanged (`this`) for chaining; it does not propagate a new extension type to the returned value. Declare extensions on the router generics or per-route.
+
+---
+
+| [« Modules](modules.md) | [Documentation index](../README.md#documentation) | [Schemas »](schemas.md) |
+|:---|:---:|---:|

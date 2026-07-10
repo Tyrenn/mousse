@@ -1,3 +1,5 @@
+[« Documentation index](../README.md#documentation)
+
 # Routing
 
 ## Registering routes
@@ -134,3 +136,8 @@ When a middleware or handler throws:
 1. The route's `httpErrorHandler` is called if defined — it may respond itself.
 2. Otherwise the error is logged (route `logger` if any, `console.error` as fallback).
 3. If the response was still not sent, Mousse responds with a `500`. Errors never end up as an implicit `200`.
+
+---
+
+| [« README](../README.md) | [Documentation index](../README.md#documentation) | [Context »](context.md) |
+|:---|:---:|---:|

@@ -1,18 +1,19 @@
-import {Mousse, Context} from 'mousse';
+import { Mousse, Context } from 'mousse';
+
+export const port = 8080;
 
 function delay(t : number, val : string) : Promise<string>{
-	return new Promise(function(resolve) {
-		setTimeout(function() {
-				resolve(val);
-		}, t);
-	});
+	return new Promise((resolve) => setTimeout(() => resolve(val), t));
 }
 
 async function someAsyncTask() {
 	return delay(500, 'Hey wait for me!');
 }
 
-const app = new Mousse({
+/**
+ * Handlers can be async : the context stays fully usable after any await.
+ */
+export const app = new Mousse({
 	// SSL options : providing key + cert switches to an SSLApp
 	// key_file_name: 'misc/key.pem',
 	// cert_file_name: 'misc/cert.pem',
@@ -25,11 +26,4 @@ const app = new Mousse({
 	// context.respond(r);
 
 	return r;
-
-}).listen(8080, (token, port) => {
-	if (token) {
-		console.log('Listening to port ' + port);
-	} else {
-		console.log('Failed to listen to port ' + port);
-	}
 });

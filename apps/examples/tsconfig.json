@@ -2,7 +2,9 @@
 	"extends": "@core/tsconfig/base",
 	"compilerOptions": {
 		"rootDir": ".",
-		"noEmit": true
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"types": ["node"]
 	},
-	"include": ["*.ts"]
+	"include": ["src/**/*.ts", "tests/**/*.ts", "run.ts"]
 }
