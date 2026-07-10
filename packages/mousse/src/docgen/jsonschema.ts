@@ -1,4 +1,4 @@
-import { JsonSchema } from '../module/schemaparser.js';
+import { JsonSchema } from './docSchemaTranslator.js';
 
 /**
  * Render a JSON Schema as a typescript-looking code view for documentation pages.

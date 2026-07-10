@@ -7,9 +7,12 @@ import { MiddlewareHandler, WSHandler, PATCHHandlers, POSTHandlers, PUTHandlers,
 import { BodyParser } from './module/bodyparser.js';
 import { ResponseSerializer } from './module/responseserializer.js';
 import { DefaultHandler } from './module/defaulthandler.js';
-import { Schemas, InferContextTypes } from './module/schema.js';
-import { DocGen } from './module/docgen.js';
-import { RouteTester } from './module/tester.js';
+import { Schemas, InferContextTypes } from './schema.js';
+import { DocGen } from './docgen/docgen.js';
+import { DocSchemaTranslator } from './docgen/docSchemaTranslator.js';
+import { HTMLDocGen, HTMLDocGenOptions } from './docgen/htmlDocGen.js';
+import { OpenAPIDocGen, OpenAPIDocGenOptions } from './docgen/openapi.js';
+import { RouteTester } from './tester.js';
 
 export interface Middleware<CT extends ContextTypes, EC extends any = {}>{
 	pattern : string;
@@ -33,6 +36,9 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	protected _defaultRouteOptions? : HTTPRouteOptions & WSRouteOptions;
 
 	protected _defaultHandler? : DefaultHandler | undefined;
+
+	// One DocSchemaTranslator per Standard Schema vendor, used by doc generation only
+	protected _docSchemaTranslators : Map<string, DocSchemaTranslator> = new Map();
 
 
 	constructor(options? : RouterOptions){
@@ -100,6 +106,11 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 						pattern : joinUri(pattern, wsroute.pattern)
 					}));
 				}
+
+				// DocSchemaTranslators merge by union : vendors already registered here are kept
+				for(const [vendor, translator] of router._docSchemaTranslators)
+					if(!this._docSchemaTranslators.has(vendor))
+						this._docSchemaTranslators.set(vendor, translator);
 			}
 			else{
 				this._middlewares.push({pattern, handler : handlers[i] as MiddlewareHandler<CT, EC>});
@@ -215,12 +226,46 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		return this;
 	}
 
+// ──────────────────────────
+// │ 📄 DOC GENERATION
+// ──────────────────────────
+
 	/**
-	 * Run a DocGen module over the registered routes
+	 * Register the DocSchemaTranslator used by doc generation for a schema vendor.
+	 * The vendor is the string the schema library reports through Standard Schema
+	 * (schema['~standard'].vendor) : 'zod', 'arktype', 'valibot'...
+	 * One translator per vendor : registering a vendor twice replaces the first.
+	 */
+	addDocSchemaTranslator(vendor : string, translator : DocSchemaTranslator){
+		this._docSchemaTranslators.set(vendor, translator);
+		return this;
+	}
+
+	/**
+	 * Run a custom DocGen over the registered routes, handing it this router's
+	 * DocSchemaTranslator registry
 	 * @param docgen
 	 */
-	document(docgen : DocGen){
-		return docgen.toDocumentation(this._httproutes, this._wsroutes);
+	async generateDoc(docgen : DocGen) : Promise<void> {
+		await docgen.toDocumentation(this._httproutes, this._wsroutes, new Map(this._docSchemaTranslators));
+	}
+
+	/**
+	 * Generate Mousse's own HTML documentation site from the registered routes.
+	 * Throws when a route schema vendor has no registered translator, unless lenient. See docs/docgen.md.
+	 * @param options
+	 */
+	generateHTMLDoc(options : HTMLDocGenOptions){
+		return this.generateDoc(new HTMLDocGen(options));
+	}
+
+	/**
+	 * Generate a standard OpenAPI 3.1 json document from the registered routes.
+	 * Throws when a route schema vendor has no registered translator, unless lenient. See docs/docgen.md.
+	 * @param options
+	 */
+	generateOpenAPIDoc(options : OpenAPIDocGenOptions){
+		return this.generateDoc(new OpenAPIDocGen(options));
 	}
 
 	/**

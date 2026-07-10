@@ -1,3 +1,5 @@
+[« Documentation index](../README.md#documentation)
+
 # Modules
 
 Modules are small, swappable pieces of behavior attached to routes. Each one is a plain interface: bring your own implementation or use the provided defaults.
@@ -87,12 +89,13 @@ interface DefaultHandler {
 }
 ```
 
-## DocGen
+Unlike the other modules, a `DefaultHandler` is **not assignable to a single route** — "no route matched" is by nature a router-level concern. Set it on the app or a router only, through `setDefaultHandler()` or the `defaultHandler` constructor option.
 
-```ts
-interface DocGen {
-	toDocumentation(httproutes: HTTPRoute[], wsroutes: WSRoute[]): void | Promise<void>;
-}
-```
+## What is not a module
 
-Turns registered routes and their schemas into documentation, run with `app.document(docgen)`. Two implementations are provided — `HTMLDocGen` (Mousse's own styled HTML site) and `OpenAPIDocGen` (a standard OpenAPI 3.1 document) — see [Documentation generation](docgen.md).
+Documentation generation (`DocGen`, `DocSchemaTranslator`) is **not** a module: it is an offline pass over the whole route tree, not a per-request behavior, and follows its own registration rules — see [Documentation generation](docgen.md).
+
+---
+
+| [« WebSockets](websockets.md) | [Documentation index](../README.md#documentation) | [Typescript »](typescript.md) |
+|:---|:---:|---:|

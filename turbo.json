@@ -20,6 +20,14 @@
     "bench": {
       "dependsOn": ["^build"],
       "cache": false
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    },
+    "start": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
     }
   }
 }

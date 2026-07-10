@@ -5,7 +5,7 @@ import { HTTPRoute, WSRoute } from './route.js';
 import { DefaultBodyParser } from './module/bodyparser.js';
 import { DefaultResponseSerializer } from './module/responseserializer.js';
 import { matchPattern } from './utils.js';
-import { SchemaValidationError } from './module/schema.js';
+import { SchemaValidationError } from './schema.js';
 
 export type MousseOptions = uWSAppOptions;
 

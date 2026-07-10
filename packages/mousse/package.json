@@ -1,10 +1,31 @@
 {
 	"name": "mousse",
 	"version": "0.0.0",
+	"description": "Fully typed Node.js web framework built on µWebSockets.js : HTTP routing, WebSockets and Server-Sent Events through a single Context API, Standard Schema validation and documentation generation.",
 	"author": "Guillaume Vailland",
 	"type": "module",
 	"license": "MIT",
-	
+	"keywords": [
+		"web",
+		"framework",
+		"server",
+		"http",
+		"websocket",
+		"sse",
+		"uwebsockets",
+		"router",
+		"typescript",
+		"standard-schema",
+		"openapi"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Tyrenn/mousse.git",
+		"directory": "packages/mousse"
+	},
+	"homepage": "https://github.com/Tyrenn/mousse#readme",
+	"bugs": "https://github.com/Tyrenn/mousse/issues",
+
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
@@ -13,10 +34,19 @@
 			"default": "./dist/index.js"
 		}
 	},
+	"files": [
+		"dist"
+	],
+	"sideEffects": false,
+	"engines": {
+		"node": ">=18"
+	},
 
 	"scripts": {
 		"build": "tsc",
-		"check-types": "tsc --noEmit"
+		"check-types": "tsc --noEmit",
+		"test": "node --test \"tests/*.test.ts\"",
+		"prepublishOnly": "npm run build"
 	},
 
 	"dependencies": {

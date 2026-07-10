@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { DocGen } from '../module/docgen.js';
+import { DocGen } from './docgen.js';
 import { HTTPRoute, WSRoute } from '../route.js';
-import { SchemaParser, translateSchema } from '../module/schemaparser.js';
-import { StandardSchemaV1 } from '../module/schema.js';
+import { DocSchemaTranslator, translateSchema, assertDocSchemaTranslators } from './docSchemaTranslator.js';
+import { StandardSchemaV1 } from '../schema.js';
 import { jsonSchemaToView, extractModels } from './jsonschema.js';
 import { HTMLRouterRenderer } from './htmlRouteRenderer.js';
 import { HTMLModelRenderer } from './htmlModelRenderer.js';
@@ -14,7 +14,10 @@ import { Model, Route as DocRoute, Router as DocRouter } from './types.js';
 export type HTMLDocGenOptions = {
 	outputDir : string;
 	title? : string;
-	schemaParsers? : SchemaParser[];
+	// Per-call translators, taking precedence over the router registry
+	translators? : Record<string, DocSchemaTranslator>;
+	// Document schemas with no matching translator as 'any' instead of throwing
+	lenient? : boolean;
 };
 
 const METHOD_DISPLAY : Record<string, string> = {
@@ -31,6 +34,8 @@ export class HTMLDocGen implements DocGen {
 
 	private _models : Map<string, Model> = new Map();
 
+	private _translators : Map<string, DocSchemaTranslator> = new Map();
+
 	constructor(options : HTMLDocGenOptions){
 		this._options = options;
 	}
@@ -39,7 +44,7 @@ export class HTMLDocGen implements DocGen {
 		if(!schema)
 			return '';
 
-		const jsonSchema = translateSchema(schema, this._options.schemaParsers ?? []);
+		const jsonSchema = translateSchema(schema, this._translators);
 
 		// Named definitions become linkable documentation models
 		if(jsonSchema)
@@ -81,7 +86,15 @@ ${content}
 </html>`;
 	}
 
-	async toDocumentation(httproutes : HTTPRoute<any, any>[], wsroutes : WSRoute<any, any>[]) : Promise<void> {
+	async toDocumentation(httproutes : HTTPRoute<any, any>[], wsroutes : WSRoute<any, any>[], translators? : Map<string, DocSchemaTranslator>) : Promise<void> {
+		// Router registry first, per-call translators option wins on conflict
+		this._translators = new Map(translators);
+		for(const [vendor, translator] of Object.entries(this._options.translators ?? {}))
+			this._translators.set(vendor, translator);
+
+		if(!this._options.lenient)
+			assertDocSchemaTranslators(httproutes, this._translators);
+
 		const title = this._options.title ?? 'API Documentation';
 
 		// Group routes by their first tag
