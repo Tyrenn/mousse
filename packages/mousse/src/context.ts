@@ -8,7 +8,7 @@ import { BodyParser } from './module/bodyparser.js';
 import { ResponseSerializer } from './module/responseserializer.js';
 import { Logger } from './module/logger.js';
 import { HTTPRouteMethod } from './route.js';
-import { Schemas, validateSchema, validateSchemaSync } from './module/schema.js';
+import { Schemas, validateSchema, validateSchemaSync } from './schema.js';
 
 /**
  * Data carried by each websocket connection
@@ -372,12 +372,13 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	}
 
 	/**
-	 *
+	 * A declared param (Params schema or generics) is guaranteed by the route match :
+	 * only untyped routes get string | undefined.
 	 * @param key
 	 * @returns
 	 */
-	param(key: Types["Params"] extends string ? Types["Params"] : string) : string | undefined {
-		return this._params[key.toLowerCase()];
+	param(key: Types["Params"] extends string ? Types["Params"] : string) : string extends Types["Params"] ? string | undefined : string {
+		return this._params[key.toLowerCase()] as any;
 	}
 
 
@@ -763,8 +764,8 @@ export class WSContext<Types extends ContextTypes = DefaultContextTypes>{
 		return this._userData.snapshot.params;
 	}
 
-	param(key: Types["Params"] extends string ? Types["Params"] : string) : string | undefined {
-		return this._userData.snapshot.params[key.toLowerCase()];
+	param(key: Types["Params"] extends string ? Types["Params"] : string) : string extends Types["Params"] ? string | undefined : string {
+		return this._userData.snapshot.params[key.toLowerCase()] as any;
 	}
 
 	get query() : Types["Query"] extends object ? Types["Query"] : { [key: string]: any } {

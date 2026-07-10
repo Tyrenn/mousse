@@ -19,17 +19,21 @@ export class DefaultBodyParser implements BodyParser<any>{
 		if(!contentType || !raw?.length)
 			return {} as Body;
 
-		if(contentType === 'application/json'){
+		// 'application/json; charset=utf-8' must match like plain 'application/json'
+		const mediaType = contentType.split(';')[0].trim().toLowerCase();
+
+		if(mediaType === 'application/json'){
 			const bodyStr = raw.toString();
 			return bodyStr ? JSON.parse(bodyStr) as Body : {} as Body;
 		}
 
-		if(contentType === 'application/x-www-form-urlencoded'){
+		if(mediaType === 'application/x-www-form-urlencoded'){
 			const bodyStr = raw.toString();
 			return bodyStr ? parseQueryString(bodyStr) as Body : {} as Body;
 		}
 
-		if (contentType.startsWith('multipart/form-data')) {
+		// getParts still needs the full header : the boundary lives in the parameters
+		if (mediaType === 'multipart/form-data') {
 			const multiparts = getParts(raw, contentType);
 			if(!multiparts) 
 				return {} as Body;

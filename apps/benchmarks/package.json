@@ -12,12 +12,16 @@
 		"autocannon": "^8.0.0",
 		"express": "^5.1.0",
 		"fastify": "^5.4.0",
+		"hono": "^4.6.0",
+		"@hono/node-server": "^1.13.0",
+		"koa": "^2.15.0",
 		"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
 	},
 	"devDependencies": {
 		"@core/tsconfig" : "workspace:*",
 
 		"@types/express": "^5.0.3",
+		"@types/koa": "^2.15.0",
 		"@types/autocannon": "^7.12.7",
 		"@types/node": "^26.1.1",
 		"typescript": "5.9.2"

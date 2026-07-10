@@ -7,7 +7,10 @@ const servers = [
 	{ name: 'uWebSockets.js', host: "localhost", port: 3010, file: './dist/uwebsocket.js' },
 	{ name: 'mousse', host: "localhost", port: 3011, file: './dist/mousse.js' },
 	{ name: 'express', host: "localhost", port: 3012, file: './dist/express.js' },
-	{ name: 'fastify', host: "127.0.0.1", port: 3013, file: './dist/fastify.js' }
+	{ name: 'fastify', host: "127.0.0.1", port: 3013, file: './dist/fastify.js' },
+	{ name: 'hono', host: "127.0.0.1", port: 3015, file: './dist/hono.js' },
+	{ name: 'node:http', host: "localhost", port: 3016, file: './dist/nodehttp.js' },
+	{ name: 'koa', host: "localhost", port: 3017, file: './dist/koa.js' }
 ]
 
 const waitForPort = (host : string, port : number, timeoutMs = 5000) : Promise<void> => new Promise((resolve, reject) => {

@@ -1,3 +1,5 @@
+[« Documentation index](../README.md#documentation)
+
 # Server-Sent Events
 
 A Server-Sent Events channel is a **sustained** request: instead of responding once, the connection is kept open and events are pushed through it.
@@ -36,3 +38,8 @@ app.get('/events', (c) => {
 - `c.sustained` tells whether the channel is open.
 
 Once a context is sustained, Mousse does not auto-respond after the handler returns: the connection stays open for future `send()` calls.
+
+---
+
+| [« Context](context.md) | [Documentation index](../README.md#documentation) | [WebSockets »](websockets.md) |
+|:---|:---:|---:|

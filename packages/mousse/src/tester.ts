@@ -1,5 +1,5 @@
-import type { Router } from '../router.js';
-import type { Mousse } from '../mousse.js';
+import type { Router } from './router.js';
+import type { Mousse } from './mousse.js';
 
 type JsonBody = unknown;
 
@@ -44,7 +44,7 @@ export class RouteTester {
 
 	private async _start(router : Router<any, any>){
 		// Dynamic import avoids a static circular dependency between router.ts and mousse.ts
-		const {Mousse} = await import('../mousse.js');
+		const {Mousse} = await import('./mousse.js');
 
 		const app = new Mousse().use(router);
 		const port = await new Promise<number>((resolve, reject) => {
