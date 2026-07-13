@@ -203,14 +203,15 @@ The simplest contribution is to test Mousse and [open issues](https://github.com
 
 ### Releasing (maintainer)
 
-Merged changesets accumulate on `main`; the [release workflow](.github/workflows/release.yml) maintains a "Version Packages" PR aggregating them. Merging that PR bumps versions, updates changelogs and publishes `mousse` to npm (requires the `NPM_TOKEN` repository secret). Manual alternative : `pnpm changeset version && pnpm release`.
+Merged changesets accumulate on `main`. Releasing is manual, from an up-to-date `main` with npm credentials (`npm login`) :
+
+```sh
+pnpm changeset version                    # consume changesets : bump versions, write changelogs
+git add -A && git commit -m "Version packages"
+pnpm release                              # build + check-types + test, then changeset publish
+git push --follow-tags                    # push the version commit and the release tags
+```
 
 ## License
 
 [MIT](LICENSE)
-
-
-
-
-> Revoir la fonctionnalité testing (pas vraiment un module ?)
-> Mecanique de room pour les sse et ws ?
