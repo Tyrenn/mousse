@@ -22,7 +22,7 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["build"]
     },
     "start": {
       "dependsOn": ["^build"],

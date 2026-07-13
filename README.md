@@ -1,13 +1,18 @@
-> **WARNING** : This is a work in progress as I rewrite all the code base, no package is yet available
 
-# Mousse : Let us play with bubbles
+<p align="center">
+  <img src="./docs/banner.svg">
+</p>
 
-![tag](https://img.shields.io/badge/version-1.0.0-0082B4.svg)
-![tag](https://img.shields.io/badge/licence-MIT-9cf.svg)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-0082B4.svg">
+  <img src="https://img.shields.io/badge/licence-MIT-9cf.svg">
+</p>
 
-Mousse is a Node.js web server framework developed in TypeScript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route HTTP requests and handle WebSockets or Server-Sent Events through a single, consistent `Context` API. It uses a middlewares-based structure and handlers as inspired by [expressJS](https://expressjs.com/) and [fastify](https://fastify.dev/).
 
-> In french Mousse refers to soap foam, composed of thousands bubbles : the requests ☁️☁️
+
+Mousse is a Node.js webserver framework developed in TypeScript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route HTTP requests and handle WebSockets or Server-Sent Events through a single, consistent `Context` API. It uses a middlewares-based structure and handlers as inspired by [expressJS](https://expressjs.com/) and [fastify](https://fastify.dev/).
+
+> In french Mousse refers to soap foam, composed of thousands bubbles : the requests 🫧
 
 ## Features
 
@@ -21,17 +26,6 @@ Mousse is a Node.js web server framework developed in TypeScript and based on [�
 - 📄 Documentation generation from route schemas : self-styled HTML site or standard OpenAPI 3.1 output
 - 🧪 One-call route testing : `router.test()` fires real requests through a single ephemeral instance, no port management
 
-## Installation
-
-> **WARNING**: Mousse is a work in progress, no package is published yet. For now, use it from the monorepo workspace:
-
-```json
-{
-	"dependencies": {
-		"mousse": "workspace:*"
-	}
-}
-```
 
 ## Quick Start
 
@@ -203,14 +197,15 @@ The simplest contribution is to test Mousse and [open issues](https://github.com
 
 ### Releasing (maintainer)
 
-Merged changesets accumulate on `main`; the [release workflow](.github/workflows/release.yml) maintains a "Version Packages" PR aggregating them. Merging that PR bumps versions, updates changelogs and publishes `mousse` to npm (requires the `NPM_TOKEN` repository secret). Manual alternative : `pnpm changeset version && pnpm release`.
+Merged changesets accumulate on `main`. Releasing is manual, from an up-to-date `main` with npm credentials (`npm login`) :
+
+```sh
+pnpm changeset version                    # consume changesets : bump versions, write changelogs
+git add -A && git commit -m "Version packages"
+pnpm release                              # build + check-types + test, then changeset publish
+git push --follow-tags                    # push the version commit and the release tags
+```
 
 ## License
 
 [MIT](LICENSE)
-
-
-
-
-> Revoir la fonctionnalité testing (pas vraiment un module ?)
-> Mecanique de room pour les sse et ws ?

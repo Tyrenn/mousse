@@ -18,8 +18,7 @@
 		"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
 	},
 	"devDependencies": {
-		"@core/tsconfig" : "workspace:*",
-
+		"@core/tsconfig": "workspace:*",
 		"@types/express": "^5.0.3",
 		"@types/koa": "^2.15.0",
 		"@types/autocannon": "^7.12.7",
