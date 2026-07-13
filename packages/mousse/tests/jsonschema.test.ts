@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { jsonSchemaToView, extractModels } from 'mousse';
+import { jsonSchemaToView, extractModels } from '@tyren/mousse';
 
 describe('jsonSchemaToView', () => {
 	test('primitives', () => {

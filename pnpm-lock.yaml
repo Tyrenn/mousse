@@ -26,6 +26,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.28)
+      '@tyren/mousse':
+        specifier: workspace:*
+        version: link:../../packages/mousse
       autocannon:
         specifier: ^8.0.0
         version: 8.0.0
@@ -41,9 +44,6 @@ importers:
       koa:
         specifier: ^2.15.0
         version: 2.16.4
-      mousse:
-        specifier: workspace:*
-        version: link:../../packages/mousse
       uWebSockets.js:
         specifier: github:uNetworking/uWebSockets.js#v20.67.0
         version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/e0f56ebb4b349017f006e14d1cd29052f2a7121d
@@ -69,7 +69,7 @@ importers:
 
   apps/examples:
     dependencies:
-      mousse:
+      '@tyren/mousse':
         specifier: workspace:*
         version: link:../../packages/mousse
     devDependencies:
@@ -98,9 +98,6 @@ importers:
         specifier: github:uNetworking/uWebSockets.js#v20.67.0
         version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/e0f56ebb4b349017f006e14d1cd29052f2a7121d
     devDependencies:
-      '@core/tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
       '@types/mime-types':
         specifier: ^3.0.1
         version: 3.0.1

@@ -79,7 +79,7 @@ Middlewares must be registered **before** `listen()` is called; routes are bound
 A `Router` is a collection of routes and middlewares that can be mounted on an app (or another router) with `use`:
 
 ```ts
-import { Router } from 'mousse';
+import { Router } from '@tyren/mousse';
 
 const users = new Router();
 users.get('/', (c) => 'user list');

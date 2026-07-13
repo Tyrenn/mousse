@@ -1,4 +1,4 @@
-import { Mousse, Context } from 'mousse';
+import { Mousse, Context } from '@tyren/mousse';
 
 export const port = 8080;
 

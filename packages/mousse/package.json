@@ -1,6 +1,9 @@
 {
-	"name": "mousse",
+	"name": "@tyren/mousse",
 	"version": "1.0.0",
+	"publishConfig": {
+		"access": "public"
+	},
 	"description": "Fully typed Node.js web framework built on µWebSockets.js : HTTP routing, WebSockets and Server-Sent Events through a single Context API, Standard Schema validation and documentation generation.",
 	"author": "Guillaume Vailland",
 	"type": "module",
@@ -52,7 +55,6 @@
 		"uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
 	},
 	"devDependencies": {
-		"@core/tsconfig": "workspace:*",
 		"@types/mime-types": "^3.0.1",
 		"@types/node": "^26.1.1",
 		"typescript": "^5.9.2"

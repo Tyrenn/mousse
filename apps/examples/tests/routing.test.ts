@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, Mousse, testRouter } from 'mousse';
+import { Router, Mousse, testRouter } from '@tyren/mousse';
 
 describe('routing', () => {
 	test('route params, lowercased names', () => testRouter(

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateSchema, validateSchemaSync, SchemaValidationError, type StandardSchemaV1 } from 'mousse';
+import { validateSchema, validateSchemaSync, SchemaValidationError, type StandardSchemaV1 } from '@tyren/mousse';
 
 // Minimal Standard Schema implementations, no library dependency
 const stringSchema : StandardSchemaV1 = {

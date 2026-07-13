@@ -1,4 +1,4 @@
-# mousse
+# @tyren/mousse
 
 ## 1.0.0
 

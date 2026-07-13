@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { translateSchema, missingDocSchemaVendors, assertDocSchemaTranslators, HTTPRoute, type StandardSchemaV1, type DocSchemaTranslator } from 'mousse';
+import { translateSchema, missingDocSchemaVendors, assertDocSchemaTranslators, HTTPRoute, type StandardSchemaV1, type DocSchemaTranslator } from '@tyren/mousse';
 
 const schemaOf = (vendor : string) : StandardSchemaV1 => ({
 	'~standard' : {version : 1, vendor, validate : (value) => ({value})}

@@ -8,7 +8,7 @@
 		"check-types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"mousse": "workspace:*"
+		"@tyren/mousse": "workspace:*"
 	},
 	"devDependencies": {
 		"@core/tsconfig": "workspace:*",

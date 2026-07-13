@@ -26,11 +26,16 @@ Mousse is a Node.js webserver framework developed in TypeScript and based on [µ
 - 📄 Documentation generation from route schemas : self-styled HTML site or standard OpenAPI 3.1 output
 - 🧪 One-call route testing : `router.test()` fires real requests through a single ephemeral instance, no port management
 
+## Installation
+
+```sh
+pnpm add @tyren/mousse    # or npm install @tyren/mousse
+```
 
 ## Quick Start
 
 ```ts
-import { Mousse } from 'mousse';
+import { Mousse } from '@tyren/mousse';
 
 new Mousse()
 	.get('/hello', (c) => {
@@ -147,7 +152,7 @@ Two suites, run together by turbo :
 - **Unit** — [`packages/mousse/tests`](packages/mousse/tests) : pure logic of the package (uri joining, query parsing, Standard Schema validation, JSON Schema rendering, doc translators).
 - **Integration & examples** — [`apps/examples/tests`](apps/examples/tests) : real requests fired through `router.test()` covering routing, context, schemas, docgen, SSE — plus a real `listen(0)` + native `WebSocket` client for upgrades, and a smoke test of every example app ([executable documentation](docs/testing.md#dogfooding)).
 
-Each one also runs alone with `pnpm --filter mousse test` or `pnpm --filter @mousse/examples test`. Tests are plain `node --test` : no test framework dependency.
+Each one also runs alone with `pnpm --filter @tyren/mousse test` or `pnpm --filter @mousse/examples test`. Tests are plain `node --test` : no test framework dependency.
 
 ## Benchmarks
 

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { joinUri, parseQueryString } from 'mousse';
+import { joinUri, parseQueryString } from '@tyren/mousse';
 import { matchPattern, definedProps } from '../dist/utils.js';
 
 describe('joinUri', () => {

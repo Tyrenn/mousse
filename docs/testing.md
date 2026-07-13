@@ -5,7 +5,7 @@
 Mousse can fire real HTTP requests against a router or app without binding a real port: `RouteTester` spins up a single ephemeral instance (`listen(0)`, OS-assigned port) and lets you send requests through it, then closes it.
 
 ```ts
-import { Router } from 'mousse';
+import { Router } from '@tyren/mousse';
 
 const users = new Router()
 	.get('/users/:id', (c) => ({ id: c.param('id') }))
@@ -46,7 +46,7 @@ Calling `router.test()` again creates a **new** independent ephemeral instance o
 `testRouter(router, callback)` creates the client, runs `callback`, and closes the instance afterwards — even if the callback throws. Convenient inside a single test case:
 
 ```ts
-import { testRouter } from 'mousse';
+import { testRouter } from '@tyren/mousse';
 
 test('users routes', () => testRouter(users, async (client) => {
 	const res = await client.get('/users/42');

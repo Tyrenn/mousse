@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, testRouter } from 'mousse';
+import { Router, testRouter } from '@tyren/mousse';
 
 async function readFrames(res : Response, count : number) : Promise<string> {
 	const reader = res.body!.getReader();

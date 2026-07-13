@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Router, Mousse, toOpenAPI } from 'mousse';
+import { Router, Mousse, toOpenAPI } from '@tyren/mousse';
 import { z } from 'zod';
 
 const outputDir = await mkdtemp(join(tmpdir(), 'mousse-docgen-'));

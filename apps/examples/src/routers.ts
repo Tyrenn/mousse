@@ -1,4 +1,4 @@
-import { Mousse, Router } from 'mousse';
+import { Mousse, Router } from '@tyren/mousse';
 
 export const port = 8080;
 

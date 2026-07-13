@@ -1,4 +1,4 @@
-import { Mousse } from "mousse";
+import { Mousse } from "@tyren/mousse";
 
 const webserver = new Mousse();
 

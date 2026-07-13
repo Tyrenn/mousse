@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Mousse } from 'mousse';
+import { Mousse } from '@tyren/mousse';
 
 /**
  * WebSocket upgrades are not covered by RouteTester : these tests bind a real

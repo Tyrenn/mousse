@@ -1,4 +1,4 @@
-import { Mousse } from 'mousse';
+import { Mousse } from '@tyren/mousse';
 
 export const port = 8080;
 

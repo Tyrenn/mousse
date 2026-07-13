@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, testRouter } from 'mousse';
+import { Router, testRouter } from '@tyren/mousse';
 
 describe('request', () => {
 	test('headers are exposed with lowercased keys', () => testRouter(
