@@ -1,13 +1,18 @@
-> **WARNING** : This is a work in progress as I rewrite all the code base, no package is yet available
 
-# Mousse : Let us play with bubbles
+<p align="center">
+  <img src="./docs/banner.svg">
+</p>
 
-![tag](https://img.shields.io/badge/version-1.0.0-0082B4.svg)
-![tag](https://img.shields.io/badge/licence-MIT-9cf.svg)
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-0082B4.svg">
+  <img src="https://img.shields.io/badge/licence-MIT-9cf.svg">
+</p>
 
-Mousse is a Node.js web server framework developed in TypeScript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route HTTP requests and handle WebSockets or Server-Sent Events through a single, consistent `Context` API. It uses a middlewares-based structure and handlers as inspired by [expressJS](https://expressjs.com/) and [fastify](https://fastify.dev/).
 
-> In french Mousse refers to soap foam, composed of thousands bubbles : the requests ☁️☁️
+
+Mousse is a Node.js webserver framework developed in TypeScript and based on [µWebSockets.js](https://github.com/uNetworking/uWebSockets.js). It provides simple ways to route HTTP requests and handle WebSockets or Server-Sent Events through a single, consistent `Context` API. It uses a middlewares-based structure and handlers as inspired by [expressJS](https://expressjs.com/) and [fastify](https://fastify.dev/).
+
+> In french Mousse refers to soap foam, composed of thousands bubbles : the requests 🫧
 
 ## Features
 
