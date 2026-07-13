@@ -26,17 +26,6 @@ Mousse is a Node.js webserver framework developed in TypeScript and based on [µ
 - 📄 Documentation generation from route schemas : self-styled HTML site or standard OpenAPI 3.1 output
 - 🧪 One-call route testing : `router.test()` fires real requests through a single ephemeral instance, no port management
 
-## Installation
-
-> **WARNING**: Mousse is a work in progress, no package is published yet. For now, use it from the monorepo workspace:
-
-```json
-{
-	"dependencies": {
-		"mousse": "workspace:*"
-	}
-}
-```
 
 ## Quick Start
 
