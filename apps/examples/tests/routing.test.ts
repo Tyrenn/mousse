@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { Router, Mousse, testRouter } from '@tyren/mousse';
 
 describe('routing', () => {
-	test('route params, lowercased names', () => testRouter(
-		new Router().get('/users/:id/books/:bookID', (c) => ({user : c.param('id'), book : c.param('bookid')})),
+	test('route params keep their declared case', () => testRouter(
+		new Router().get('/users/:id/books/:bookID', (c) => ({user : c.param('id'), book : c.param('bookID'), params : c.params})),
 		async (client) => {
 			const res = await client.get('/users/7/books/42');
-			assert.deepEqual(await res.json(), {user : '7', book : '42'});
+			assert.deepEqual(await res.json(), {user : '7', book : '42', params : {id : '7', bookID : '42'}});
 		}
 	));
 

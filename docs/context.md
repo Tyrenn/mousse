@@ -52,12 +52,13 @@ c.status(201).header('x-request-id', id).json({ ok: true });
 |---|---|
 | `c.status(code, message?)` | Set the response status |
 | `c.statusCode` | Current status code |
-| `c.header(name, value)` / `c.header({...})` | Set one or several response headers |
+| `c.header(name, value)` / `c.header({...})` | Set one or several response headers, replacing previous values. An array value is written as one header line per entry |
+| `c.appendHeader(name, value)` | Add a value without replacing the previous ones (e.g. several `set-cookie`) |
 | `c.type(extOrFilename)` | Set `content-type` from a file extension (`c.type('json')`) |
 | `c.respond(body?)` | End the response with an optional `string`/`Buffer` body |
 | `c.json(body, status?)` | Serialize through the route's [ResponseSerializer](modules.md#responseserializer) and respond as `application/json` |
 | `c.html(body, status?)` | Respond as `text/html` |
-| `c.file(path)` | Read a file and respond with its content type, `404` when missing |
+| `c.file(path)` | Stream a file with its content type and backpressure handling. `404` when missing or not a regular file, `500` on other errors. The path is used as-is: never build it from unsanitized request data |
 | `c.redirect(url)` | `302` redirect |
 | `c.ended` | `true` once the response has been sent (or the request aborted) |
 

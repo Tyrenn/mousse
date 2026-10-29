@@ -93,8 +93,8 @@ export type GETHandlers<Types extends ContextTypes = DefaultContextTypes, Contex
 // ──────────────────────────
 // │ DELETE
 // ──────────────────────────
-export type DELHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = GenericHandler<Types, ContextExtension & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>>;
+export type DELHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = GenericHandler<Types, ContextExtension & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>>;
 
-export type DELMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = GenericHandler<Types, ContextExtension & Omit<Context<Types>, "body" | keyof SustainableContext | keyof UpgradableContext>, true>;
+export type DELMiddlewareHandler<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = GenericHandler<Types, ContextExtension & Omit<Context<Types>, keyof SustainableContext | keyof UpgradableContext>, true>;
 
 export type DELHandlers<Types extends ContextTypes = DefaultContextTypes, ContextExtension extends any = {}> = [...DELMiddlewareHandler<Types, ContextExtension>[], DELHandler<Types, ContextExtension>];

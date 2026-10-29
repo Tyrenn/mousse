@@ -36,12 +36,12 @@ Patterns follow the µWebSockets.js syntax:
 - `/files/*` — wildcard
 
 ```ts
-app.get('/users/:id/books/:bookid', (c) => {
-	return { user: c.param('id'), book: c.param('bookid') };
+app.get('/users/:id/books/:bookId', (c) => {
+	return { user: c.param('id'), book: c.param('bookId') };
 });
 ```
 
-Parameter names are lowercased internally: `c.param('ID')` and `c.param('id')` are equivalent.
+Parameter names keep the case they are declared with: `:bookId` is read with `c.param('bookId')`, and a `Params` schema must use the same key.
 
 ## Handler return values
 

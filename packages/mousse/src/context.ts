@@ -1,5 +1,6 @@
 import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, us_socket_context_t as uWSSocketContext, WebSocket as uWSWebSocket } from 'uWebSockets.js';
-import { readFile } from 'fs/promises';
+import { stat } from 'fs/promises';
+import { createReadStream } from 'fs';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import type { Mousse } from './mousse.js';
@@ -144,8 +145,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// uWebSocket.js response
 	private _ures : uHttpResponse;
 
-	// Response headers
-	private _headers : Record<string, string> = {};
+	// Response headers, an array value is written as one header line per entry (set-cookie)
+	private _headers : Record<string, string | string[]> = {};
 
    // Returns the custom HTTP underlying status code of the response.
 	private _statusCode : number = 200;
@@ -155,6 +156,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	// Flag if response has been sent
 	private _ended : boolean = false;
+
+	// Flag if the client went away before the response ended : ures must not be touched anymore
+	private _aborted : boolean = false;
+
+	// Internal callbacks run once on abort (e.g. destroying a file stream)
+	private _abortHandlers : (() => void)[] = [];
 
 
 
@@ -220,7 +227,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 		// Populate params
 		for (let i = 0; i < params.length; i++)
-			this._params[params[i].slice(1).toLowerCase()] = this._ureq.getParameter(i)!;
+			this._params[params[i].slice(1)] = this._ureq.getParameter(i)!;
 
 		// Populate headers
 		this._ureq.forEach((key, value) => this._reqHeaders[key] = value);
@@ -235,10 +242,11 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		// Bind the abort handler as required by uWebsockets.js for each uWS.HttpResponse to allow for async processing
 		// https://github.com/uNetworking/uWebSockets.js/blob/master/examples/AsyncFunction.js
       res.onAborted(() => {
-			if (this._ended)
-				return;
+			this._aborted = true;
 			this._ended = true;
 			this._bodyReject?.(new Error('Request aborted'));
+			for (const handler of this._abortHandlers)
+				handler();
 		});
 	}
 
@@ -378,7 +386,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 * @returns
 	 */
 	param(key: Types["Params"] extends string ? Types["Params"] : string) : string extends Types["Params"] ? string | undefined : string {
-		return this._params[key.toLowerCase()] as any;
+		return this._params[key] as any;
 	}
 
 
@@ -445,13 +453,14 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	}
 
 	/**
-	 * Either set header using string or object
+	 * Either set header using string or object. Replaces any previous value ;
+	 * an array value is written as one header line per entry.
 	 * @param field
 	 * @param value
 	 */
-	header(name : string, value : string) : Context<Types>;
+	header(name : string, value : string | string[]) : Context<Types>;
 	header(field : Record<string, any>) : Context<Types>;
-	header(field : Record<string, any> | string, value? : string) : Context<Types> {
+	header(field : Record<string, any> | string, value? : string | string[]) : Context<Types> {
 		if(typeof field === 'object') {
 			for(const header in field)
 				this.header(header, field[header]);
@@ -464,6 +473,41 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
       this._headers[field.toLowerCase()] = value!;
 
 		return this;
+	}
+
+	/**
+	 * Add a value to a response header without replacing the previous ones,
+	 * written as separate header lines (required for set-cookie)
+	 * @param name
+	 * @param value
+	 */
+	appendHeader(name : string, value : string | string[]) {
+		const key = name.toLowerCase();
+		const previous = this._headers[key];
+		const values = Array.isArray(value) ? value : [value];
+
+		if(previous === undefined)
+			this._headers[key] = Array.isArray(value) ? [...value] : value;
+		else
+			this._headers[key] = [...(Array.isArray(previous) ? previous : [previous]), ...values];
+
+		return this;
+	}
+
+	/**
+	 * Write status line and headers. Must run inside a cork.
+	 */
+	private _writeHead() {
+		this._ures.writeStatus(this._statusCode + ' ' + (this._statusMessage || STATUS_CODES[this._statusCode] || ''));
+
+		for (const name in this._headers) {
+			const value = this._headers[name];
+			if (Array.isArray(value))
+				for (const v of value)
+					this._ures.writeHeader(name, v);
+			else
+				this._ures.writeHeader(name, value);
+		}
 	}
 
 
@@ -485,20 +529,11 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			return this;
 
 		this._ures.cork(() => {
-			// Write status code along with mapped status code message
-			if (this._statusCode || this._statusMessage)
-				this._ures.writeStatus((this._statusCode ?? 200) + ' ' + (this._statusMessage || STATUS_CODES[this._statusCode ?? 200]));
-			else
-				this._ures.writeStatus("200 " + STATUS_CODES[200]);
-
-			// Write headers
-			for (const name in this._headers) {
-				this._ures.writeHeader(name, Array.isArray(this._headers[name]) ? this._headers[name].join(', ') : this._headers[name]);
-			}
+			this._writeHead();
 
 			// Need to send a response without a body with the custom content-length header
 			if(body === undefined && !!this._headers['content-length']){
-				const contentLength : string | string[] = this._headers['content-length'];
+				const contentLength = this._headers['content-length'];
 				const reportedContentLength : number = parseInt(Array.isArray(contentLength) ? contentLength[contentLength.length - 1] : contentLength);
 				this._ures.endWithoutBody(reportedContentLength);
 			}
@@ -571,17 +606,111 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	}
 
 
+	/**
+	 * Stream a file with its content type. Missing file (or not a regular file) -> 404, other errors -> 500.
+	 * Backpressure is handled : the read stream is paused until the socket is writable again.
+	 * The path is used as-is : never build it from unsanitized request data.
+	 * @param path
+	 */
 	async file(path: string) {
-		if(this._upgraded)
+		if(this._upgraded || this._ended)
 			return;
 
+		let size : number;
 		try {
-			const file = await readFile(path);
-
-			this.type(path.toLowerCase()).respond(file as any);
-		} catch (e) {
-			this.status(404).respond('Not found');
+			const stats = await stat(path);
+			if(!stats.isFile())
+				throw Object.assign(new Error('Not a file'), {code : 'ENOENT'});
+			size = stats.size;
+		} catch (e : any) {
+			if(e?.code === 'ENOENT' || e?.code === 'ENOTDIR')
+				this.status(404).respond('Not found');
+			else {
+				this._logger ? this._logger.log(e) : console.error(e);
+				this.status(500).respond();
+			}
+			return;
 		}
+
+		// Aborted while stating
+		if(this._ended)
+			return;
+
+		this.type(path.toLowerCase());
+
+		if(size === 0){
+			this.respond('');
+			return;
+		}
+
+		// From here on the response is owned by the stream
+		this._ended = true;
+		this._upgradable = false;
+		this._sustainable = false;
+
+		await new Promise<void>((resolve) => {
+			const stream = createReadStream(path);
+			let headWritten = false;
+
+			const finish = () => {
+				stream.destroy();
+				resolve();
+			};
+			this._abortHandlers.push(finish);
+
+			stream.on('error', (e) => {
+				this._logger ? this._logger.log(e) : console.error(e);
+				if(!this._aborted)
+					this._ures.cork(() => {
+						// Headers not sent yet : a proper 500 is still possible, otherwise cut the connection
+						if(!headWritten){
+							this._statusCode = 500;
+							this._statusMessage = undefined;
+							this._headers = {};
+							this._writeHead();
+							this._ures.end();
+						}
+						else
+							this._ures.close();
+					});
+				finish();
+			});
+
+			stream.on('data', (chunk) => {
+				if(this._aborted)
+					return finish();
+
+				const buffer = chunk as Buffer;
+				// tryEnd needs an ArrayBuffer holding exactly this chunk
+				const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+
+				let ok = false, done = false, offset = 0;
+				this._ures.cork(() => {
+					if(!headWritten){
+						this._writeHead();
+						headWritten = true;
+					}
+					offset = this._ures.getWriteOffset();
+					[ok, done] = this._ures.tryEnd(ab, size);
+				});
+
+				if(done)
+					return finish();
+
+				if(!ok){
+					// Socket full : wait for drain, then send the remaining part of this chunk
+					stream.pause();
+					this._ures.onWritable((writeOffset) => {
+						const [ok, done] = this._ures.tryEnd(ab.slice(writeOffset - offset), size);
+						if(done)
+							finish();
+						else if(ok)
+							stream.resume();
+						return ok;
+					});
+				}
+			});
+		});
 	}
 
 
@@ -765,7 +894,7 @@ export class WSContext<Types extends ContextTypes = DefaultContextTypes>{
 	}
 
 	param(key: Types["Params"] extends string ? Types["Params"] : string) : string extends Types["Params"] ? string | undefined : string {
-		return this._userData.snapshot.params[key.toLowerCase()] as any;
+		return this._userData.snapshot.params[key] as any;
 	}
 
 	get query() : Types["Query"] extends object ? Types["Query"] : { [key: string]: any } {
