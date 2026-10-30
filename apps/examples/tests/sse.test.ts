@@ -52,4 +52,75 @@ describe('server-sent events', () => {
 			assert.equal((await client.get('/unsustained')).status, 500);
 		}
 	));
+
+	test('multi-line data and event fields are framed per spec', () => testRouter(
+		new Router().sse('/framed', (c) => {
+			c.send('line one\nline two');
+			c.send({n : 1}, {event : 'update', id : 42, retry : 3000});
+			c.send('x', {event : 'evil\ndata: injected'});
+		}),
+		async (client) => {
+			const frames = await readFrames(await client.get('/framed'), 4);
+			assert.ok(frames.includes('data: line one\ndata: line two\n\n'));
+			assert.ok(frames.includes('event: update\nid: 42\nretry: 3000\ndata: {"n":1}\n\n'));
+			assert.ok(frames.includes('event: evildata: injected\ndata: x\n\n'));
+		}
+	));
+
+	test('middleware headers reach the event stream', () => testRouter(
+		new Router()
+			.use((c) => { c.header('access-control-allow-origin', '*'); })
+			.sse('/cors', (c) => c.send('hi')),
+		async (client) => {
+			const res = await client.get('/cors');
+			assert.equal(res.headers.get('access-control-allow-origin'), '*');
+			assert.equal(res.headers.get('content-type'), 'text/event-stream');
+			await res.body!.cancel();
+		}
+	));
+
+	test('heartbeat sends comment frames', () => testRouter(
+		new Router().sse('/beat', {heartbeat : 20}, () => {}),
+		async (client) => {
+			const res = await client.get('/beat');
+			const reader = res.body!.getReader();
+			const {value} = await reader.read();
+			assert.equal(new TextDecoder().decode(value), ':\n\n');
+			await reader.cancel();
+		}
+	));
+
+	test('respond() ends the stream from the server', () => testRouter(
+		new Router().sse('/finite', (c) => {
+			c.send('last');
+			c.respond();
+		}),
+		async (client) => {
+			assert.equal(await (await client.get('/finite')).text(), 'data: last\n\n');
+		}
+	));
+
+	test('onAbort fires when the client disconnects, onResponse reports it', async () => {
+		let cleaned! : () => void;
+		const cleanedUp = new Promise<void>((resolve) => cleaned = resolve);
+		let reported! : (aborted : boolean) => void;
+		const hooked = new Promise<boolean>((resolve) => reported = resolve);
+
+		await testRouter(
+			new Router()
+				.onResponse((c, info) => reported(info.aborted))
+				.sse('/live', {heartbeat : 10}, (c) => {
+					const timer = setInterval(() => c.send('tick'), 5);
+					c.onAbort(() => {
+						clearInterval(timer);
+						cleaned();
+					});
+				}),
+			async (client) => {
+				await readFrames(await client.get('/live'), 2);
+				await cleanedUp;
+				assert.equal(await hooked, true);
+			}
+		);
+	});
 });

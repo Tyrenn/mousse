@@ -57,7 +57,7 @@ You can always respond manually instead with `c.respond()`, `c.json()`, `c.html(
 
 ## Middlewares
 
-A middleware receives the same `Context` as the handler and may be async. Middlewares run in registration order, before the handler.
+A middleware receives the same `Context` as the handler and may be async. Middlewares run in registration order, before the handler. A middleware that answers (`c.respond()`, `c.json()`...) ends the request : the next middlewares and the handler do not run.
 
 Global middlewares are registered with `use`:
 
@@ -113,11 +113,59 @@ app.post('/items', {
 	responseSerializer: mySerializer,     // How c.json() payloads are serialized
 	httpErrorHandler: myErrorHandler,     // Called when a middleware/handler throws
 	logger: myLogger,                     // Available as c.log()
+	bodyLimit: 10 * 1024 * 1024,          // Max request body in bytes, 1 MiB by default
+	validationErrorStatus: 422,           // Invalid request data status, 400 by default
+	rateLimiter: myRateLimiter,           // See docs/rate-limiting.md, false disables an inherited one
+	onRequest: myHook,                    // One or several hooks, see below
 	schemas: { Body, Query, Params, Response }  // Validation & typing, see docs/schemas.md
 }, handler);
 ```
 
 WebSocket routes additionally accept `maxBackPressure` and `wsErrorHandler`.
+
+## Request hooks
+
+`onRequest` runs **before anything of the request is analysed**, unlike a middleware. A request goes through:
+
+1. Request hooks : the router ones, then the route ones
+2. [Rate limiter](rate-limiting.md)
+3. Body limit
+4. `Params` and `Query` [schemas](schemas.md)
+5. Middlewares
+6. `Body` schema
+7. Handler
+
+It is the place for what must reach invalid requests too, or spare them any work : blocking an address, tagging a request, counting it.
+
+```ts
+app.onRequest((c) => {
+	if (blocklist.has(c.ip))
+		return c.status(403).respond();
+});
+
+app.onRequest('/admin', adminHook);                 // scoped like middlewares
+
+app.get('/report', { onRequest: reportHook }, handler);       // this route only
+app.get('/export', { onRequest: [first, second] }, handler);
+```
+
+Hooks registered on a router follow it when mounted with `use`. They add up, and a route's hooks run after those of its router. Answering or throwing ends the request, like in a middleware.
+
+Nothing is validated yet : `c.param()` and `c.query` are raw strings whatever the schemas declare, so hooks are not typed by them. Use a middleware when you need validated values. On a `ws` route, hooks run on the upgrade request.
+
+## Response hooks
+
+`onResponse` runs once each response has ended — sent, aborted by the client, upgraded to a WebSocket (`101`), or SSE stream closed. It is the place for access logs and metrics:
+
+```ts
+app.onResponse((c, { statusCode, elapsedTime, aborted }) => {
+	httpDuration.labels(c.method(), c.route, String(statusCode)).observe(elapsedTime / 1000);
+});
+
+app.onResponse('/admin', (c, info) => audit(c.url, info));   // scoped like middlewares
+```
+
+`c.route` is the matched pattern (`/users/:id`), keeping metric cardinality bounded. `elapsedTime` is in milliseconds, measured from the moment the request reached Mousse. Hooks run after the response and cannot change it; their errors (sync or async) are logged, never propagated. Like middlewares, hooks registered on a router follow it when mounted with `use`.
 
 ## Default handler (404)
 
@@ -134,10 +182,21 @@ app.setDefaultHandler({
 When a middleware or handler throws:
 
 1. The route's `httpErrorHandler` is called if defined — it may respond itself.
-2. Otherwise the error is logged (route `logger` if any, `console.error` as fallback).
+2. Otherwise an `HTTPError` (or subclass such as `PayloadTooLargeError`, `BodyParseError`) is answered with its `statusCode` and `{ error: message }`, a [schema validation error](schemas.md) with `400` (`validationErrorStatus`), and anything else is logged (route `logger` if any, `console.error` as fallback).
 3. If the response was still not sent, Mousse responds with a `500`. Errors never end up as an implicit `200`.
+
+```ts
+import { HTTPError } from '@tyren/mousse';
+
+app.get('/offers/:idOffer', async (c) => {
+	const offer = await findOffer(c.param('idOffer'));
+	if(!offer)
+		throw new HTTPError(404, 'Offer not found');   // -> 404 { error: 'Offer not found' }
+	return offer;
+});
+```
 
 ---
 
-| [« README](../README.md) | [Documentation index](../README.md#documentation) | [Context »](context.md) |
+| [« Getting started](getting-started.md) | [Documentation index](../README.md#documentation) | [Context »](context.md) |
 |:---|:---:|---:|

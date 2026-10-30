@@ -49,16 +49,44 @@ Handler and middleware types are **inferred from the schemas**: no explicit gene
 |---|---|---|
 | `Params` | Before any middleware runs | `400` |
 | `Query` | Before any middleware runs | `400` |
-| `Body` | At the first `c.body()` call | `400` |
-| `Response` | Inside `c.json()`, before serialization | `500` |
+| `Body` | After the middlewares, before the handler (or earlier, at the first `c.body()` call of a middleware) | `400` |
+| `Response` | Inside `c.json()`, before serialization, against the schema of the final status | `500` |
 
 - A route without schemas validates nothing: zero overhead.
-- Body validation is lazy by design: a handler that never reads the body never pays for it.
+- The handler always receives a validated body, even if it never reads it. Middlewares run first, so an authentication middleware rejects a request before its body is parsed and validated. `c.body(true)` stays the raw, unvalidated `Buffer` (webhook signatures...).
+- A body the parser cannot read (malformed json) is a `400 { "error": "Malformed body" }`, whether the route has a schema or not.
 - `Response` schemas must validate **synchronously** (serialization cannot await). Async refinements are fine everywhere else.
+
+## Responses per status
+
+A single `Response` schema describes **2xx** responses. To describe others, key schemas by status code or range — exact codes win over ranges:
+
+```ts
+app.get('/offers/:idOffer', {
+	schemas: {
+		Params: z.object({ idOffer: z.string() }),
+		Response: {
+			200: Offer,
+			'4xx': z.object({ error: z.string() })
+		}
+	}
+}, async (c) => {
+	const offer = await findOffer(c.param('idOffer'));
+	if (!offer)
+		return c.status(404).json({ error: 'Offer not found' });   // typed and validated against '4xx'
+	return offer;                                                // typed and validated against 200
+});
+```
+
+A status with no matching schema is sent unvalidated. Handler return values are typed from the 2xx schemas; `c.json()` also accepts the other shapes. The documentation generators list every status.
+
+## Undeclared fields
+
+Response validation sends the schema **output**, so whether undeclared fields reach the client depends on the library: Zod `z.object` and Valibot `v.object` strip them, ArkType keeps them unless told otherwise (`type({ '+': 'delete', id: 'string' })`). Use stripping objects for responses built from database rows to avoid leaking fields such as password hashes.
 
 ## Validation failures
 
-Without a custom error handler, an invalid request gets a `400` with the issues reported by the schema library:
+Without a custom error handler, an invalid request gets a `400` (or the `validationErrorStatus` route / router option, e.g. `422`) with the issues reported by the schema library:
 
 ```json
 {
@@ -94,10 +122,23 @@ The route's [BodyParser and ResponseSerializer](modules.md) receive the relevant
 
 ```ts
 parse(raw, contentType, schema)      // BodyParser — schema = schemas.Body
-serialize(res, schema)               // ResponseSerializer — schema = schemas.Response
+serialize(res, schema)               // ResponseSerializer — schema = the Response schema of the status
+compile(schema)                      // ResponseSerializer, optional — once per Response schema at startup
 ```
 
-The defaults ignore it, and validation is handled by Mousse either way — a custom parser does **not** need to validate. The hook exists for schema-aware implementations, typically a serializer compiling the Response schema to a fast stringifier (fast-json-stringify style) instead of a generic `JSON.stringify`.
+The defaults ignore it, and validation is handled by Mousse either way — a custom parser does **not** need to validate.
+
+A serializer implementing `compile` gets each Response schema once, when the route is registered, and returns the function used for every response matching it: no per-request lookup, and an unsupported schema fails at startup instead of on the first request. Typical use is [fast-json-stringify](https://github.com/fastify/fast-json-stringify), which also drops undeclared fields, fed by a [DocSchemaTranslator](docgen.md):
+
+```ts
+import fastJson from 'fast-json-stringify';
+import { z } from 'zod';
+
+app.setDefaultResponseSerializer({
+	serialize: (res) => JSON.stringify(res ?? {}),      // responses without schema
+	compile: (schema) => fastJson(z.toJSONSchema(schema))
+});
+```
 
 ## Typing without schemas
 

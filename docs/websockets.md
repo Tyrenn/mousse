@@ -85,7 +85,7 @@ app.ws('/feed', { maxBackPressure: 64 * 1024 }, (c) => { /* ... */ });
 
 ## Error handling
 
-- Errors thrown by upgrade **middlewares** go through the route's `httpErrorHandler`, then a `500` fallback — like any HTTP route.
+- Errors thrown by upgrade **middlewares** go through the route's `httpErrorHandler`. Without one, an `HTTPError` rejects the upgrade with its status and `{ error: message }`, anything else with a `500` — like any HTTP route.
 - Errors thrown by the **handler** or inside event listeners go through the route's `wsErrorHandler`, or `console.error` when none is set:
 
 ```ts

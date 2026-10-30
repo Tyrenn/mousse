@@ -1,0 +1,161 @@
+/* Colors come from the Mousse banner */
+:root{
+	--navy : #002137;
+	--navy-raised : #06304c;
+	--navy-line : #17405c;
+	--on-navy : #f2f9ff;
+	--on-navy-muted : #a9c6da;
+	--bubble-1 : #0e9fff;
+	--bubble-2 : #b6e2ff;
+	--bubble-3 : #80ccff;
+	--bubble-4 : #005a95;
+
+	--surface : #fbfdff;
+	--surface-raised : #eef6fc;
+	--line : #d3e3ee;
+	--text : #0a2a3f;
+	--text-muted : #4d6a7e;
+	--link : #006da0;
+	--accent : #0082b4;
+	--on-accent : #fff;
+	--bar-muted : #7d97aa;
+	--inline-code : #e4f1fa;
+
+	--font-display : 'Fredoka Variable', ui-rounded, system-ui, sans-serif;
+	--font-body : 'Inter Variable', system-ui, sans-serif;
+	--font-mono : 'JetBrains Mono Variable', ui-monospace, Consolas, monospace;
+
+	--gutter : clamp(16px, 4vw, 40px);
+	--page : 1160px;
+
+	color-scheme : light dark;
+}
+
+@media (prefers-color-scheme: dark){
+	:root{
+		--surface : #00192b;
+		--surface-raised : #04283f;
+		--line : #17405c;
+		--text : #e8f4fc;
+		--text-muted : #9dbbcf;
+		--link : #7cc9ff;
+		--accent : #0e9fff;
+		--on-accent : #002137;
+		--bar-muted : #54778f;
+		--inline-code : #0b3550;
+	}
+}
+
+*, *::before, *::after{
+	box-sizing : border-box;
+}
+
+html{
+	scroll-behavior : smooth;
+	scroll-padding-top : 80px;
+	-webkit-text-size-adjust : 100%;
+}
+
+body{
+	margin : 0;
+	background : var(--surface);
+	color : var(--text);
+	font : 400 1rem/1.65 var(--font-body);
+}
+
+h1, h2, h3, h4{
+	font-family : var(--font-display);
+	font-weight : 500;
+	line-height : 1.2;
+	margin : 0;
+}
+
+a{
+	color : var(--link);
+}
+
+code, pre{
+	font-family : var(--font-mono);
+	font-size : 0.875rem;
+}
+
+:focus-visible{
+	outline : 2px solid var(--bubble-1);
+	outline-offset : 2px;
+	border-radius : 4px;
+}
+
+.page{
+	width : 100%;
+	max-width : calc(var(--page) + 2 * var(--gutter));
+	margin-inline : auto;
+	padding-inline : var(--gutter);
+}
+
+/* Code blocks stay navy in both themes, like the banner */
+.code{
+	position : relative;
+	min-width : 0;
+	background : var(--navy);
+	border : 1px solid var(--navy-line);
+	border-radius : 14px;
+	color : #dcecf8;
+}
+
+.code pre{
+	margin : 0;
+	padding : 18px 20px;
+	overflow-x : auto;
+	line-height : 1.6;
+	tab-size : 3;
+}
+
+.code code{
+	background : none;
+	padding : 0;
+	color : inherit;
+}
+
+.copy{
+	position : absolute;
+	top : 8px;
+	right : 8px;
+	padding : 3px 10px;
+	border : 1px solid var(--navy-line);
+	border-radius : 999px;
+	background : var(--navy-raised);
+	color : var(--on-navy-muted);
+	font : 500 0.75rem var(--font-body);
+	cursor : pointer;
+	opacity : 0;
+	transition : opacity 0.15s;
+}
+
+.code:hover .copy, .copy:focus-visible{
+	opacity : 1;
+}
+
+@media (hover: none){
+	.copy{
+		opacity : 1;
+	}
+}
+
+.hljs-comment, .hljs-quote{ color : #7f9fb5; font-style : italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-meta{ color : #80ccff; }
+.hljs-string, .hljs-regexp, .hljs-addition{ color : #a8e6c1; }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet{ color : #ffcf8b; }
+.hljs-title, .hljs-section, .hljs-attr, .hljs-attribute, .hljs-type{ color : #b6e2ff; }
+.hljs-deletion{ color : #ffb3ad; }
+
+@media (prefers-reduced-motion: reduce){
+	html{
+		scroll-behavior : auto;
+	}
+
+	*, *::before, *::after{
+		animation-duration : 0.01ms !important;
+		animation-iteration-count : 1 !important;
+		transition-duration : 0.01ms !important;
+	}
+}

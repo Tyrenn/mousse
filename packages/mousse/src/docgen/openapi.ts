@@ -3,6 +3,7 @@ import { join } from 'path';
 import { HTTPRoute, WSRoute } from '../route.js';
 import { DocGen } from './docgen.js';
 import { JsonSchema, DocSchemaTranslator, translateSchema, assertDocSchemaTranslators } from './docSchemaTranslator.js';
+import { isStandardSchema, responseSchemaEntries } from '../schema.js';
 
 export type OpenAPIInfo = {
 	title? : string;
@@ -61,9 +62,7 @@ export function toOpenAPI(httproutes : HTTPRoute<any, any>[], options? : OpenAPI
 			};
 		}
 
-		operation.responses = route.schemas?.Response
-			? {200 : {description : 'Success', content : {'application/json' : {schema : translateSchema(route.schemas.Response, translators) ?? {}}}}}
-			: {200 : {description : 'Success'}};
+		operation.responses = buildResponses(route, translators);
 
 		paths[path] = {...paths[path], [method] : operation};
 	}
@@ -105,6 +104,23 @@ export class OpenAPIDocGen implements DocGen {
 		await mkdir(this._options.outputDir, {recursive : true});
 		await writeFile(join(this._options.outputDir, this._options.fileName ?? 'openapi.json'), JSON.stringify(document, null, '\t'));
 	}
+}
+
+function buildResponses(route : HTTPRoute<any, any>, translators : Map<string, DocSchemaTranslator>) : Record<string, any> {
+	const response = route.schemas?.Response;
+	const responses : Record<string, any> = {};
+
+	for(const [status, schema] of responseSchemaEntries(response)){
+		// A single schema documents the usual 200 ; OpenAPI spells ranges '2XX'
+		const key = isStandardSchema(response) ? '200' : status.toUpperCase();
+		const description = key.startsWith('2') ? 'Success' : key.startsWith('4') || key.startsWith('5') ? 'Error' : 'Response';
+		responses[key] = {description, content : {'application/json' : {schema : translateSchema(schema, translators) ?? {}}}};
+	}
+
+	if(Object.keys(responses).length === 0)
+		responses['200'] = {description : 'Success'};
+
+	return responses;
 }
 
 function buildParameters(route : HTTPRoute<any, any>, translators : Map<string, DocSchemaTranslator>) : any[] {

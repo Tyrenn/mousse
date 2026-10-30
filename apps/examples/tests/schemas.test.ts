@@ -74,13 +74,50 @@ describe('schema validation', () => {
 		}
 	));
 
-	test('body validation is lazy : handler never reading the body never fails', () => testRouter(
-		new Router().post('/lazy', {
+	test('body is validated before the handler, even when it never reads it', () => testRouter(
+		new Router().post('/eager', {
 			schemas : {Body : z.object({strict : z.string()})}
 		}, () => 'never read the body'),
 		async (client) => {
-			const res = await client.post('/lazy', {strict : 42});
-			assert.equal(res.status, 200);
+			const res = await client.post('/eager', {strict : 42});
+			assert.equal(res.status, 400);
+		}
+	));
+
+	test('middlewares run before body validation', async () => {
+		let parsedBeforeAuth = false;
+		await testRouter(
+			new Router().post('/secured', {
+				schemas : {Body : z.object({name : z.string().refine(() => { parsedBeforeAuth = true; return true; })})}
+			}, (c) => c.getHeader('authorization') ? undefined : c.status(401).respond(), (c) => 'ok'),
+			async (client) => {
+				assert.equal((await client.post('/secured', {name : 'x'})).status, 401);
+				assert.equal(parsedBeforeAuth, false);
+				assert.equal((await client.post('/secured', {name : 'x'}, {headers : {authorization : 'yes'}})).status, 200);
+				assert.equal(parsedBeforeAuth, true);
+			}
+		);
+	});
+
+	test('malformed json is a 400, not a 500', () => testRouter(
+		new Router()
+			.post('/plain', async (c) => await c.body())
+			.post('/schema', {schemas : {Body : z.object({a : z.string()})}}, async (c) => await c.body()),
+		async (client) => {
+			for(const path of ['/plain', '/schema']){
+				const res = await client.post(path, '{"a":', {headers : {'content-type' : 'application/json'}});
+				assert.equal(res.status, 400);
+				assert.deepEqual(await res.json(), {error : 'Malformed body'});
+			}
+		}
+	));
+
+	test('validationErrorStatus changes the invalid request status', () => testRouter(
+		new Router({validationErrorStatus : 422}).post('/users', {
+			schemas : {Body : z.object({name : z.string()})}
+		}, async (c) => await c.body()),
+		async (client) => {
+			assert.equal((await client.post('/users', {name : 42})).status, 422);
 		}
 	));
 
@@ -108,4 +145,102 @@ describe('schema validation', () => {
 			assert.deepEqual(await (await client.post('/free', {anything : ['goes']})).json(), {anything : ['goes']});
 		}
 	));
+});
+
+describe('response schemas per status', () => {
+	const router = new Router().get('/offers/:idOffer', {
+		schemas : {
+			Response : {
+				200 : z.object({id : z.string()}),
+				201 : z.object({id : z.string(), created : z.literal(true)}),
+				'4xx' : z.object({error : z.string()})
+			}
+		}
+	}, (c) => {
+		const id = c.param('idOffer')!;
+		if(id === 'missing')
+			return c.status(404).json({error : 'Offer not found'});
+		if(id === 'bad-error')
+			return c.status(404).json({nope : true} as any);
+		if(id === 'new')
+			return c.status(201).json({id, created : true});
+		if(id === 'teapot')
+			return c.status(503).json({anything : 'goes'} as any);
+		return {id};
+	});
+
+	test('exact code, then range, picks the schema', () => testRouter(router, async (client) => {
+		assert.deepEqual(await (await client.get('/offers/1')).json(), {id : '1'});
+		assert.deepEqual(await (await client.get('/offers/new')).json(), {id : 'new', created : true});
+
+		const missing = await client.get('/offers/missing');
+		assert.equal(missing.status, 404);
+		assert.deepEqual(await missing.json(), {error : 'Offer not found'});
+
+		assert.equal((await client.get('/offers/bad-error')).status, 500);
+	}));
+
+	test('a status without schema is not validated', () => testRouter(router, async (client) => {
+		const res = await client.get('/offers/teapot');
+		assert.equal(res.status, 503);
+		assert.deepEqual(await res.json(), {anything : 'goes'});
+	}));
+
+	test('a single Response schema only covers 2xx', () => testRouter(
+		new Router().get('/one', {schemas : {Response : z.object({id : z.number()})}}, (c) => c.status(404).json({error : 'nope'} as any)),
+		async (client) => {
+			const res = await client.get('/one');
+			assert.equal(res.status, 404);
+			assert.deepEqual(await res.json(), {error : 'nope'});
+		}
+	));
+
+	test('undeclared keys are stripped by zod response schemas', () => testRouter(
+		new Router().get('/me', {schemas : {Response : z.object({id : z.string()})}}, () => ({id : '1', passwordHash : 'secret'} as any)),
+		async (client) => {
+			assert.deepEqual(await (await client.get('/me')).json(), {id : '1'});
+		}
+	));
+});
+
+describe('compiled serializers', () => {
+	test('compile runs once per schema at registration and replaces serialize', async () => {
+		const compiled : string[] = [];
+		let serializeCalls = 0;
+		const ok = z.object({id : z.string()});
+		const err = z.object({error : z.string()});
+		const serializer = {
+			serialize : (res : any) => { serializeCalls++; return JSON.stringify(res); },
+			compile : (schema : any) => {
+				const name = schema === ok ? 'ok' : 'err';
+				compiled.push(name);
+				return (res : any) => JSON.stringify({...res, via : name});
+			}
+		};
+
+		await testRouter(
+			new Router({responseSerializer : serializer}).get('/x/:id', {schemas : {Response : {200 : ok, '4xx' : err}}}, (c) =>
+				c.param('id') === 'none' ? c.status(404).json({error : 'none'}) : ({id : c.param('id')!})
+			),
+			async (client) => {
+				assert.deepEqual(await (await client.get('/x/1')).json(), {id : '1', via : 'ok'});
+				assert.deepEqual(await (await client.get('/x/2')).json(), {id : '2', via : 'ok'});
+				assert.deepEqual(await (await client.get('/x/none')).json(), {error : 'none', via : 'err'});
+			}
+		);
+
+		assert.deepEqual(compiled.sort(), ['err', 'ok']);
+		assert.equal(serializeCalls, 0);
+	});
+});
+
+// Type level checks, enforced by check-types
+new Router().get('/typed', {
+	schemas : {Response : {200 : z.object({id : z.string()}), 404 : z.object({error : z.string()})}}
+}, (c) => {
+	if(Math.random() > 2)
+		return c.status(404).json({error : 'x'});
+	// @ts-expect-error neither the 200 nor the 404 shape
+	c.json({other : 1});
+	return {id : 'ok'};
 });

@@ -15,7 +15,8 @@ export interface ModelGroup{
 }
 
 export interface Response{
-	status : number;
+	// Code (200) or range ('4xx')
+	status : number | string;
 	summary : string;
 	content : string;
 }
@@ -34,6 +35,9 @@ export interface Router{
 	name : string;
 	routes : Route[];
 }
+
+// Turns typescript source into highlighted html
+export type Highlighter = (code : string) => string;
 
 export interface HTMLPage{
 	html : string;

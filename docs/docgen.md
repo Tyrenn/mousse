@@ -111,5 +111,5 @@ await app.generateDoc(myCustomDocGen);
 
 ---
 
-| [« Testing routes](testing.md) | [Documentation index](../README.md#documentation) | [README »](../README.md) |
+| [« Testing routes](testing.md) | [Documentation index](../README.md#documentation) | [Rate limiting »](rate-limiting.md) |
 |:---|:---:|---:|

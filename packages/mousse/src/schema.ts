@@ -46,24 +46,85 @@ export declare namespace StandardSchemaV1 {
 }
 
 
+export type ResponseStatusRange = '1xx' | '2xx' | '3xx' | '4xx' | '5xx';
+
+/**
+ * Response schemas keyed by status : exact codes win over ranges ('4xx').
+ */
+export type ResponseSchemaMap = Partial<Record<number | ResponseStatusRange, StandardSchemaV1>>;
+
 /**
  * Schemas attachable to a route. Keys mirror ContextTypes.
+ * A single Response schema describes 2xx responses ; use a ResponseSchemaMap to describe others.
  */
 export type Schemas = {
 	Body? : StandardSchemaV1;
 	Query? : StandardSchemaV1;
 	Params? : StandardSchemaV1;
-	Response? : StandardSchemaV1;
+	Response? : StandardSchemaV1 | ResponseSchemaMap;
 };
 
+export function isStandardSchema(value : unknown) : value is StandardSchemaV1 {
+	return !!value && typeof value === 'object' && '~standard' in value;
+}
+
+/**
+ * Every schema of a Response option, keyed by status ('2xx' for a single schema)
+ */
+export function responseSchemaEntries(response : Schemas['Response']) : [string, StandardSchemaV1][] {
+	if(!response)
+		return [];
+
+	if(isStandardSchema(response))
+		return [['2xx', response]];
+
+	return Object.entries(response).filter((entry) : entry is [string, StandardSchemaV1] => isStandardSchema(entry[1]));
+}
+
+/**
+ * Schema applying to a response status : exact code first, then its range. A single schema covers 2xx.
+ */
+export function responseSchemaFor(response : Schemas['Response'], statusCode : number) : StandardSchemaV1 | undefined {
+	if(!response)
+		return undefined;
+
+	const range = `${Math.floor(statusCode / 100)}xx` as ResponseStatusRange;
+
+	if(isStandardSchema(response))
+		return range === '2xx' ? response : undefined;
+
+	return response[statusCode] ?? response[range];
+}
+
 export type SchemaPart = 'body' | 'query' | 'params' | 'response';
+
+type SchemaOutput<S> = S extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S> : never;
+
+type IsSuccessKey<K> = `${K & (string | number)}` extends `2${string}` ? true : false;
+
+type NeverToAny<T> = [T] extends [never] ? any : T;
+
+/**
+ * Output of the 2xx response schemas : what a handler returns
+ */
+export type InferSuccessResponse<R> = R extends StandardSchemaV1
+	? SchemaOutput<R>
+	: R extends ResponseSchemaMap ? {[K in keyof R] : IsSuccessKey<K> extends true ? SchemaOutput<R[K]> : never}[keyof R] : any;
+
+/**
+ * Output of the non 2xx response schemas : what c.json() also accepts, along with a status
+ */
+export type InferErrorResponse<R> = R extends ResponseSchemaMap
+	? R extends StandardSchemaV1 ? never : {[K in keyof R] : IsSuccessKey<K> extends true ? never : SchemaOutput<R[K]>}[keyof R]
+	: never;
 
 /**
  * Derive route ContextTypes from a Schemas set, so handlers are typed from the schemas themselves.
  */
 export type InferContextTypes<S extends Schemas> = {
 	Body : S['Body'] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S['Body']> : any;
-	Response : S['Response'] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S['Response']> : any;
+	Response : S['Response'] extends object ? NeverToAny<InferSuccessResponse<S['Response']>> : any;
+	ErrorResponse : InferErrorResponse<S['Response']>;
 	Query : S['Query'] extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<S['Query']> : any;
 	Params : S['Params'] extends StandardSchemaV1 ? Extract<keyof StandardSchemaV1.InferOutput<S['Params']>, string> : string;
 };

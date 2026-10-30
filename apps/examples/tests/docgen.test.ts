@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { Router, Mousse, toOpenAPI } from '@tyren/mousse';
 import { z } from 'zod';
 
@@ -83,6 +84,18 @@ describe('generateOpenAPIDoc', () => {
 		assert.equal(post.parameters.find((p : any) => p.in === 'query').name, 'dryrun');
 	});
 
+	test('response schemas per status become OpenAPI responses', async () => {
+		const router = new Router().get('/offers/:id', {
+			schemas : {Response : {200 : z.object({id : z.string()}), 404 : z.object({error : z.string()}), '5xx' : z.object({error : z.string()})}}
+		}, () => ({id : '1'})).addDocSchemaTranslator('zod', zodTranslator);
+		await router.generateOpenAPIDoc({outputDir, fileName : 'statuses.json'});
+
+		const responses = JSON.parse(await readFile(join(outputDir, 'statuses.json'), 'utf8')).paths['/offers/{id}'].get.responses;
+		assert.deepEqual(Object.keys(responses).sort(), ['200', '404', '5XX']);
+		assert.equal(responses['404'].description, 'Error');
+		assert.equal(responses['404'].content['application/json'].schema.properties.error.type, 'string');
+	});
+
 	test('toOpenAPI stays usable as a pure function', () => {
 		const doc = toOpenAPI([], {info : {title : 'Empty'}});
 		assert.equal(doc.info.title, 'Empty');
@@ -91,6 +104,18 @@ describe('generateOpenAPIDoc', () => {
 });
 
 describe('generateHTMLDoc', () => {
+	test('importing mousse does not load highlight.js', () => {
+		const output = execFileSync(process.execPath, ['--input-type=module', '-e',
+			// Load hooks see ESM and CJS modules alike
+			`import { registerHooks } from 'node:module';
+			const loaded = [];
+			registerHooks({load : (url, context, next) => { loaded.push(url); return next(url, context); }});
+			await import('@tyren/mousse');
+			console.log(loaded.some(url => url.includes('highlight.js')));`
+		], {encoding : 'utf8'});
+		assert.equal(output.trim(), 'false');
+	});
+
 	test('produces index, group pages and translated schema views', async () => {
 		const app = new Mousse().use('/users', usersRouter());
 		app.addDocSchemaTranslator('zod', zodTranslator);

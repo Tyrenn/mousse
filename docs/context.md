@@ -19,6 +19,10 @@ Every request is wrapped in a `Context` object (`c` in the examples) passed to e
 | `c.params` | Route parameters record |
 | `c.param(name)` | Single route parameter |
 | `c.query` | Parsed query string |
+| `c.ip` | Client address. Behind [trusted proxies](getting-started.md#behind-a-proxy), the first `x-forwarded-for` hop from the right that is not one of them |
+| `c.ips` | Addresses from the client to the socket peer, trusted proxies in between |
+| `c.protocol` | `'http'` / `'https'`, from `x-forwarded-proto` when the peer is a trusted proxy |
+| `c.host` | Requested host, from `x-forwarded-host` when the peer is a trusted proxy |
 | `c.body()` | Parsed request body (see below) |
 | `c.body(true)` | Raw body as a `Buffer`, `null` when the method carries no body |
 | `c.request` | The underlying µWS request — only valid before the first `await` |
@@ -35,6 +39,8 @@ app.post('/items', async (c) => {
 ```
 
 Parsing is delegated to the route's [BodyParser](modules.md#bodyparser). The default one understands `application/json`, `application/x-www-form-urlencoded` and `multipart/form-data`, and falls back to the raw `Buffer` for other content types. Bodies are only consumed for `post`, `put`, `patch` and `delete` requests.
+
+Bodies are limited to **1 MiB** by default, configurable with the `bodyLimit` route or router option (bytes). A declared `content-length` above the limit is answered `413` before any middleware runs. A body exceeding it while being received (lying `content-length`, chunked upload) makes `c.body()` throw a `PayloadTooLargeError`, answered `413`. Extra chunks are dropped, never buffered.
 
 ### Query string
 
@@ -69,10 +75,12 @@ Calling any respond method after the response ended is a no-op — never an erro
 | Member | Description |
 |---|---|
 | `c.log(data)` | Forward to the route's [Logger](modules.md#logger), no-op when none is set |
+| `c.onAbort(listener)` | Called if the client goes away before the response ended (long polling, SSE) |
+| `c.aborted` | `true` once the client went away before the response ended |
 | `c.mousse` | The Mousse instance that created the context |
 | `c.response` | The underlying µWS response, for advanced use |
 
-SSE members (`sustain`, `send`) are documented in [Server-Sent Events](server-sent-events.md). WebSocket route **handlers** receive a different, already-connected `WSContext` — the HTTP `Context` described here is what ws **middlewares** get during the upgrade request; see [WebSockets](websockets.md).
+SSE members (`sustain`, `send`, `ping`) are documented in [Server-Sent Events](server-sent-events.md). WebSocket route **handlers** receive a different, already-connected `WSContext` — the HTTP `Context` described here is what ws **middlewares** get during the upgrade request; see [WebSockets](websockets.md).
 
 ---
 

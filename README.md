@@ -74,6 +74,24 @@ const app = new Mousse({
 });
 ```
 
+## Behind a proxy
+
+Behind a load balancer or reverse proxy, declare which peers may set `x-forwarded-for`, `x-forwarded-proto` and `x-forwarded-host`. Nothing is trusted by default.
+
+```ts
+const app = new Mousse({
+	trustProxy: ['loopback', '10.0.0.0/8']   // IPs, CIDR ranges, 'loopback' / 'private' / 'linklocal', true, or (ip) => boolean
+});
+
+app.get('/whoami', (c) => ({ ip: c.ip, ips: c.ips, protocol: c.protocol, host: c.host }));
+```
+
+`c.ip` walks `x-forwarded-for` from the right and stops at the first address that is not a trusted proxy, so a client cannot spoof it by sending its own header.
+
+## Platforms
+
+µWebSockets.js ships prebuilt binaries only. v20.67.0 supports **Node.js 22, 24 and 26** on **glibc** Linux (x64, arm64), macOS and Windows. Alpine (musl) and odd Node versions (23, 25) fail at import with an explicit error: use a glibc image such as `node:24-slim` (or `node:24-bookworm`).
+
 ## WebSockets and Server-Sent Events
 
 Real-time channels use the same routing and `Context` API as HTTP. 
@@ -81,7 +99,7 @@ Real-time channels use the same routing and `Context` API as HTTP.
 A `ws` route separates the **upgrade phase** — plain HTTP middlewares that can reject the connection by responding — from the **connected phase**, where the handler receives an already-open `WSContext` with events, pub/sub and automatic backpressure handling. 
 
 ```ts
-app.ws('/chat/:room',
+app.ws<{ Params: 'room' }>('/chat/:room',
 	(c) => {
 		if (!c.getHeader('authorization')) return c.status(401).respond(); // upgrade rejected
 	},
@@ -118,15 +136,17 @@ See [Schemas](docs/schemas.md) for what is validated and when, failure handling 
 
 ## Documentation
 
-1. [Routing](docs/routing.md) — routes, patterns, middlewares, routers, error handling
-2. [Context](docs/context.md) — request and response API
-3. [Server-Sent Events](docs/server-sent-events.md) — sustained requests
-4. [WebSockets](docs/websockets.md) — upgrades, events, backpressure
-5. [Modules](docs/modules.md) — body parsers, serializers, loggers, error handlers
-6. [Typescript](docs/typescript.md) — context types and extensions
-7. [Schemas](docs/schemas.md) — validation and type inference
-8. [Testing routes](docs/testing.md) — firing requests against a router with no real port
-9. [Documentation generation](docs/docgen.md) — HTML docs and OpenAPI output
+1. [Getting started](docs/getting-started.md) — installation, first routes, philosophy
+2. [Routing](docs/routing.md) — routes, patterns, middlewares, routers, error handling
+3. [Context](docs/context.md) — request and response API
+4. [Server-Sent Events](docs/server-sent-events.md) — sustained requests
+5. [WebSockets](docs/websockets.md) — upgrades, events, backpressure
+6. [Modules](docs/modules.md) — body parsers, serializers, loggers, error handlers
+7. [Typescript](docs/typescript.md) — context types and extensions
+8. [Schemas](docs/schemas.md) — validation and type inference
+9. [Testing routes](docs/testing.md) — firing requests against a router with no real port
+10. [Documentation generation](docs/docgen.md) — HTML docs and OpenAPI output
+11. [Rate limiting](docs/rate-limiting.md) — per route or per router, in memory or on Redis, behind a proxy
 
 ## Monorepo
 
@@ -135,10 +155,12 @@ See [Schemas](docs/schemas.md) for what is validated and when, failure handling 
 | [`packages/mousse`](packages/mousse) | The framework, with its unit tests |
 | [`apps/examples`](apps/examples) | Runnable examples and the framework integration tests |
 | [`apps/benchmarks`](apps/benchmarks) | Benchmarks against express, fastify and raw µWebSockets.js |
+| [`apps/site`](apps/site) | The [presentation site](https://tyrenn.github.io/mousse/), built from the README and `docs/` |
 
 ```sh
 pnpm example            # list runnable examples
 pnpm example schemas    # run one on http://localhost:8080
+pnpm site               # run the presentation site locally
 ```
 
 ## Tests

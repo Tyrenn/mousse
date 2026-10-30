@@ -6,8 +6,8 @@ type GenericHandler<
 	Passive extends boolean = false
 > = (
 	context: C
-	// Middleware returns are ignored, but 'return c.status(401).respond()' is the documented early-exit idiom
-) => Passive extends true ? (void | Context<any> | Promise<void | Context<any>>) : (void | T["Response"] | Promise<void | T["Response"]>);
+	// Returned contexts are ignored : 'return c.status(401).respond()' is the documented early-exit idiom
+) => Passive extends true ? (void | Context<any> | Promise<void | Context<any>>) : (void | Context<any> | T["Response"] | Promise<void | Context<any> | T["Response"]>);
 
 
 // ──────────────────────────

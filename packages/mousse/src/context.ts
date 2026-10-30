@@ -4,12 +4,13 @@ import { createReadStream } from 'fs';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import type { Mousse } from './mousse.js';
-import { parseQueryString } from './utils.js';
+import { parseQueryString, normalizeIp } from './utils.js';
+import { BodyParseError, HTTPError, PayloadTooLargeError } from './httperror.js';
 import { BodyParser } from './module/bodyparser.js';
 import { ResponseSerializer } from './module/responseserializer.js';
 import { Logger } from './module/logger.js';
 import { HTTPRouteMethod } from './route.js';
-import { Schemas, validateSchema, validateSchemaSync } from './schema.js';
+import { Schemas, StandardSchemaV1, responseSchemaFor, validateSchema, validateSchemaSync } from './schema.js';
 
 /**
  * Data carried by each websocket connection
@@ -25,8 +26,12 @@ export type WebSocketUserData = {
 		headers : Record<string, string>;
 		url : string;
 		route : string;
+		ip : string;
 	};
 };
+
+// Fastify's default
+export const DEFAULT_BODY_LIMIT = 1024 * 1024;
 
 /**
  * Enhanced websocket
@@ -50,11 +55,36 @@ export type WebSocketEventHandlers = {
 export type ContextTypes = {
 	Body? : any;
 	Response? : any;
+	// Non 2xx responses c.json() accepts along with a status (inferred from a ResponseSchemaMap)
+	ErrorResponse? : any;
 	Query? : any;
 	Params? : string;
 }
 
 export type DefaultContextTypes = {Body : any, Response : any};
+
+type ErrorResponseOf<Types extends ContextTypes> = Types extends {ErrorResponse : infer E} ? E : never;
+
+export type CompiledSerializer = (res : any) => string | Buffer | ArrayBuffer;
+
+/**
+ * Outcome of a request handed to onResponse hooks
+ */
+export type ResponseInfo = {
+	statusCode : number;
+	// Milliseconds between the context creation and the end of the response
+	elapsedTime : number;
+	// The client went away before the response ended (also how an SSE stream closed by the client ends)
+	aborted : boolean;
+};
+
+export type ResponseHook = (c : Context<any>, info : ResponseInfo) => void | Promise<void>;
+
+/**
+ * Runs before anything of the request is analysed : schemas are not applied yet, so params and query are raw.
+ * Answering through the context or throwing ends the request.
+ */
+export type RequestHook = (c : Context<any>) => void | Context<any> | Promise<void | Context<any>>;
 
 // Pattern is string if types is undefined and :str/... if defined
 
@@ -76,10 +106,28 @@ export interface UpgradableContext{
 	upgrade : () => void;
 };
 
+/**
+ * SSE frame fields sent along with the data
+ */
+export type SSEEventOptions = {
+	// Event type, dispatched to addEventListener(event) on the client
+	event? : string;
+	// Last event id, sent back by the client as last-event-id when reconnecting
+	id? : string | number;
+	// Client reconnection delay in milliseconds
+	retry? : number;
+};
+
+export type SustainOptions = {
+	// Send a comment frame every heartbeat milliseconds, keeping proxies from closing an idle stream
+	heartbeat? : number;
+};
+
 export interface SustainableContext{
-	sustain : () => void;
+	sustain : (options? : SustainOptions) => void;
 	sustained : boolean;
-	send : (data : string | object) => void;
+	send : (data : string | object, options? : SSEEventOptions) => void;
+	ping : () => void;
 }
 
 
@@ -120,6 +168,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	private _bodyReject? : (reason : Error) => void;
 
+	private _bodyLimit : number;
+
+	// Set once the body (declared or received) exceeds the limit. Remaining chunks are read and dropped :
+	// closing the socket mid-upload makes clients reset before reading the 413
+	private _bodyTooLarge : boolean = false;
+
 	//
 	private _schemas? : Schemas;
 
@@ -127,6 +181,9 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	private _bodyParser : BodyParser<any>;
 
 	private _responseSerializer : ResponseSerializer<any>;
+
+	// ResponseSerializer.compile() output per response schema, built at route registration
+	private _compiledSerializers? : Map<StandardSchemaV1, CompiledSerializer>;
 
 
 	// Populated param
@@ -137,6 +194,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	// Request headers
 	private _reqHeaders : Record<string, string> = {};
+
+	// Address of the socket peer (the last proxy when behind one)
+	private _remoteAddress : string;
+
+	// Socket peer followed by the trusted x-forwarded-for hops, right to left. Computed on first access
+	private _proxyChain? : string[];
 
 
 
@@ -160,8 +223,16 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	// Flag if the client went away before the response ended : ures must not be touched anymore
 	private _aborted : boolean = false;
 
-	// Internal callbacks run once on abort (e.g. destroying a file stream)
+	// Callbacks run once on abort : file streams, onAbort listeners
 	private _abortHandlers : (() => void)[] = [];
+
+	// Request start, for onResponse elapsedTime
+	private _startTime : bigint = process.hrtime.bigint();
+
+	private _responseHooks : ResponseHook[];
+
+	// onResponse hooks already ran
+	private _finished : boolean = false;
 
 
 
@@ -172,9 +243,12 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	private _sustained : boolean = false;
 
+	// Fully formatted frames waiting for the socket
 	private _eventQueue : string[] = [];
 
 	private _isDraining : boolean = false;
+
+	private _heartbeat? : NodeJS.Timeout;
 
 
 
@@ -198,8 +272,9 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	constructor(
 		mousse : Mousse, req : uHttpRequest, res : uHttpResponse, route : string, params : string[], 
 		bodyParser : BodyParser<any>, responseSerializer : ResponseSerializer<any>, logger? : Logger,
-		http? : {method? : HTTPRouteMethod, schemas? : Schemas},
-		ws? : {socket? : uWSSocketContext, maxBackPressure? : number}
+		http? : {method? : HTTPRouteMethod, schemas? : Schemas, bodyLimit? : number, compiledSerializers? : Map<StandardSchemaV1, CompiledSerializer>},
+		ws? : {socket? : uWSSocketContext, maxBackPressure? : number},
+		responseHooks? : ResponseHook[]
 	) {
 		this._mousse = mousse;
 
@@ -210,8 +285,11 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._bodyParser = bodyParser;
 		this._responseSerializer = responseSerializer;
 		this._logger = logger;
+		this._responseHooks = responseHooks ?? [];
 
 		this._schemas = http?.schemas;
+		this._bodyLimit = http?.bodyLimit ?? DEFAULT_BODY_LIMIT;
+		this._compiledSerializers = http?.compiledSerializers;
 		this._sustainable = !!http?.method && (['get', 'patch', 'post', 'put'] as HTTPRouteMethod[]).includes(http?.method);
 
 		this._upgradable = !!ws;
@@ -224,6 +302,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._method = this._ureq.getMethod();
 		this._url = this._ureq.getUrl();
 		this._queryString = this._ureq.getQuery() ?? '';
+		this._remoteAddress = normalizeIp(Buffer.from(res.getRemoteAddressAsText()).toString());
 
 		// Populate params
 		for (let i = 0; i < params.length; i++)
@@ -234,6 +313,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 		// Start consuming body chunks immediately : uWS drops chunks arriving before onData is attached
 		if(!ws && ['post', 'put', 'patch', 'delete'].includes(this._method)){
+			if(Number(this._reqHeaders['content-length']) > this._bodyLimit)
+				this._bodyTooLarge = true;
 			this._bodyRawPromise = this._getBodyRaw(res);
 			// Mark a potential abort rejection as handled to avoid unhandledRejection when body is never read
 			this._bodyRawPromise.catch(() => {});
@@ -247,6 +328,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			this._bodyReject?.(new Error('Request aborted'));
 			for (const handler of this._abortHandlers)
 				handler();
+			this._stopHeartbeat();
+			this._finish();
 		});
 	}
 
@@ -260,6 +343,66 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 	log(data? : any){
 		this._logger?.log(data);
+	}
+
+	/**
+	 * Register a listener called if the client goes away before the response ended,
+	 * typically an SSE stream closed by the client : clear timers and subscriptions there.
+	 * Called right away when the request is already aborted.
+	 * @param listener
+	 */
+	onAbort(listener : () => void){
+		if(this._aborted)
+			listener();
+		else
+			this._abortHandlers.push(listener);
+		return this;
+	}
+
+	/**
+	 * Whether the client went away before the response ended
+	 */
+	get aborted(){
+		return this._aborted;
+	}
+
+	/**
+	 * Run the onResponse hooks, once. Hooks never break the response : their errors are logged.
+	 */
+	private _finish(){
+		if(this._finished)
+			return;
+		this._finished = true;
+
+		if(this._responseHooks.length === 0)
+			return;
+
+		const info : ResponseInfo = {
+			statusCode : this._statusCode,
+			elapsedTime : Number(process.hrtime.bigint() - this._startTime) / 1e6,
+			aborted : this._aborted
+		};
+
+		const report = (e : any) => this._logger ? this._logger.log(e) : console.error(e);
+		for(const hook of this._responseHooks){
+			try{
+				const result = hook(this, info);
+				if(result instanceof Promise)
+					result.catch(report);
+			} catch(e) {
+				report(e);
+			}
+		}
+	}
+
+	/**
+	 * Throw a PayloadTooLargeError when the declared content-length already exceeds the body limit.
+	 * Called by the route pipeline before any middleware.
+	 * @internal
+	 */
+	checkBodyLimit(){
+		if(this._bodyTooLarge)
+			throw new PayloadTooLargeError(this._bodyLimit);
 	}
 
 	/**
@@ -291,12 +434,29 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 
 	private async _getBodyRaw(res : uHttpResponse): Promise<Buffer>{
-		let buffer : Buffer;
+		let buffer : Buffer | undefined;
+		let received = 0;
 
 		return new Promise((resolve, reject) => {
 			this._bodyReject = reject;
 
+			if(this._bodyTooLarge)
+				reject(new PayloadTooLargeError(this._bodyLimit));
+
 			res.onData((ab, isLast) => {
+				// Over the limit : remaining chunks are dropped, never buffered
+				if(this._bodyTooLarge)
+					return;
+
+				// content-length may lie or be absent (chunked) : count what really arrives
+				received += ab.byteLength;
+				if(received > this._bodyLimit){
+					this._bodyTooLarge = true;
+					buffer = undefined;
+					reject(new PayloadTooLargeError(this._bodyLimit));
+					return;
+				}
+
 				// The ArrayBuffer is only valid during this callback : copy it
 				const chunk = Buffer.from(ab.slice(0));
 
@@ -338,7 +498,13 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(raw)
 			return this._bodyRaw;
 
-		let parsed = await this._bodyParser.parse(this._bodyRaw, this._reqHeaders['content-type'], this._schemas?.Body);
+		let parsed;
+		try{
+			parsed = await this._bodyParser.parse(this._bodyRaw, this._reqHeaders['content-type'], this._schemas?.Body);
+		} catch(e) {
+			// A parser failure is the client's fault (malformed json...), unless the parser chose a status itself
+			throw e instanceof HTTPError ? e : new BodyParseError(e);
+		}
 
 		if(this._schemas?.Body)
 			parsed = await validateSchema(this._schemas.Body, 'body', parsed);
@@ -369,6 +535,61 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 */
 	method() {
 		return this._method;
+	}
+
+	private get _chain() : string[] {
+		if(this._proxyChain)
+			return this._proxyChain;
+
+		const chain = [this._remoteAddress];
+		const forwarded = this._reqHeaders['x-forwarded-for'];
+
+		// Walk x-forwarded-for from the right while the current hop is a trusted proxy
+		if(forwarded){
+			const hops = forwarded.split(',').map(hop => hop.trim()).filter(hop => hop.length > 0);
+			for(let i = hops.length - 1; i >= 0 && this._mousse.isTrustedProxy(chain[chain.length - 1]); i--)
+				chain.push(hops[i]);
+		}
+
+		return this._proxyChain = chain;
+	}
+
+	/**
+	 * Client address : the first x-forwarded-for hop, from the right, not sent by a trusted proxy.
+	 * Without trusted proxies, the socket peer address.
+	 */
+	get ip() : string {
+		const chain = this._chain;
+		return chain[chain.length - 1];
+	}
+
+	/**
+	 * Addresses from the client to the socket peer, trusted proxies in between
+	 */
+	get ips() : string[] {
+		return [...this._chain].reverse();
+	}
+
+	/**
+	 * 'http' or 'https', from x-forwarded-proto when the socket peer is a trusted proxy
+	 */
+	get protocol() : string {
+		const forwarded = this._reqHeaders['x-forwarded-proto'];
+		if(forwarded && this._mousse.isTrustedProxy(this._remoteAddress))
+			return forwarded.split(',')[0].trim().toLowerCase();
+
+		return this._mousse.ssl ? 'https' : 'http';
+	}
+
+	/**
+	 * Requested host (with port if any), from x-forwarded-host when the socket peer is a trusted proxy
+	 */
+	get host() : string {
+		const forwarded = this._reqHeaders['x-forwarded-host'];
+		if(forwarded && this._mousse.isTrustedProxy(this._remoteAddress))
+			return forwarded.split(',')[0].trim();
+
+		return this._reqHeaders['host'] ?? '';
 	}
 
 	/**
@@ -528,6 +749,15 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(this._upgraded)
 			return this;
 
+		// Status and headers are already sent : responding ends the event stream
+		if(this._sustained){
+			this._stopHeartbeat();
+			this._ures.cork(() => this._ures.end(body));
+			this._ended = true;
+			this._finish();
+			return this;
+		}
+
 		this._ures.cork(() => {
 			this._writeHead();
 
@@ -544,6 +774,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		this._ended = true;
 		this._upgradable = false;
 		this._sustainable = false;
+
+		this._finish();
 
       return this;
    }
@@ -575,18 +807,24 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 	 * @param status
 	 * @returns
 	 */
-   json(body : Types["Response"], status? : {code : number, message? : string}) {
+   json(body : Types["Response"] | ErrorResponseOf<Types>, status? : {code : number, message? : string}) {
 		if(this._upgraded)
 			return this;
 
 		if(status)
 			this.status(status.code, status.message);
 
-		// Response schema validation is synchronous by design : serialization cannot await
-		if(this._schemas?.Response)
-			body = validateSchemaSync(this._schemas.Response, 'response', body) as Types["Response"];
+		// The schema is picked from the final status : exact code, then range
+		const schema = responseSchemaFor(this._schemas?.Response, this._statusCode);
 
-		return this.header('content-type', 'application/json').respond(this._responseSerializer.serialize(body, this._schemas?.Response));
+		// Response schema validation is synchronous by design : serialization cannot await
+		if(schema)
+			body = validateSchemaSync(schema, 'response', body) as Types["Response"];
+
+		const compiled = schema ? this._compiledSerializers?.get(schema) : undefined;
+		const payload = compiled ? compiled(body) : this._responseSerializer.serialize(body, schema);
+
+		return this.header('content-type', 'application/json').respond(payload);
    }
 
 
@@ -654,6 +892,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 
 			const finish = () => {
 				stream.destroy();
+				this._finish();
 				resolve();
 			};
 			this._abortHandlers.push(finish);
@@ -724,19 +963,36 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		return this._sustained;
 	}
 
-	sustain(){
+	/**
+	 * Open the event stream : status and headers (middleware ones included) are sent right away.
+	 * End it from the server with respond().
+	 * @param options
+	 */
+	sustain(options? : SustainOptions){
 		if(this._ended || !this._sustainable)
 			throw new Error('Context is not sustainable');
 		if(this._sustained)
 			return;
 
-		this._ures.cork(() => {
-			this._ures.writeHeader('content-type', 'text/event-stream');
-			this._ures.writeHeader('connection', 'keep-alive');
-			this._ures.writeHeader('cache-control', 'no-cache');
-		});
+		this._headers['content-type'] = 'text/event-stream';
+		this._headers['connection'] = 'keep-alive';
+		this._headers['cache-control'] = 'no-cache';
+		// Disable nginx response buffering, which would hold events back
+		this._headers['x-accel-buffering'] ??= 'no';
+
+		this._ures.cork(() => this._writeHead());
 
 		this._sustained = true;
+		this._upgradable = false;
+
+		if(options?.heartbeat)
+			this._heartbeat = setInterval(() => this.ping(), options.heartbeat);
+	}
+
+	private _stopHeartbeat(){
+		if(this._heartbeat)
+			clearInterval(this._heartbeat);
+		this._heartbeat = undefined;
 	}
 
 	private flushEventQueue() {
@@ -748,8 +1004,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		let wrote = true;
 		this._ures.cork(() => {
 			while (wrote && this._eventQueue.length > 0) {
-				const message = this._eventQueue.shift()!;
-				wrote = this._ures.write(`data: ${message}\n\n`);
+				wrote = this._ures.write(this._eventQueue.shift()!);
 			}
 		});
 
@@ -757,8 +1012,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			this._ures.onWritable(() => {
 				let wrote = true;
 				while (wrote && this._eventQueue.length > 0) {
-					const message = this._eventQueue.shift()!;
-					wrote = this._ures.write(`data: ${message}\n\n`);
+					wrote = this._ures.write(this._eventQueue.shift()!);
 				}
 
 				if (this._eventQueue.length === 0 || wrote) {
@@ -773,11 +1027,42 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		}
 	}
 
-	send(data : string | object){
+	/**
+	 * Send an event. Objects are JSON serialized, multi-line strings are split into several data lines.
+	 * @param data
+	 * @param options event, id and retry fields
+	 */
+	send(data : string | object, options? : SSEEventOptions){
 		if(this._ended || !this._sustained)
 			throw new Error('Context is not sustained');
 
-		this._eventQueue.push(typeof data === "string" ? data : JSON.stringify(data));
+		// Line breaks in event / id would forge extra fields
+		const field = (value : string | number) => String(value).replace(/[\r\n\0]/g, '');
+
+		let frame = '';
+		if(options?.event !== undefined)
+			frame += `event: ${field(options.event)}\n`;
+		if(options?.id !== undefined)
+			frame += `id: ${field(options.id)}\n`;
+		if(options?.retry !== undefined)
+			frame += `retry: ${Math.floor(options.retry)}\n`;
+
+		const payload = typeof data === "string" ? data : JSON.stringify(data);
+		for(const line of payload.split(/\r\n|\r|\n/))
+			frame += `data: ${line}\n`;
+
+		this._eventQueue.push(frame + '\n');
+		this.flushEventQueue();
+	}
+
+	/**
+	 * Send a comment frame, ignored by clients : keeps idle streams alive through proxies
+	 */
+	ping(){
+		if(this._ended || !this._sustained)
+			return;
+
+		this._eventQueue.push(':\n\n');
 		this.flushEventQueue();
 	}
 
@@ -823,6 +1108,7 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			return;
 
 		this._upgraded = true;
+		this._statusCode = 101;
 		// Headers come from the snapshot : the uWS request is not usable anymore if an await occurred
 		this._ures.upgrade({
 			handlers : this._wsEventHandlers,
@@ -833,7 +1119,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 				query : this.query,
 				headers : this._reqHeaders,
 				url : this._url,
-				route : this._route
+				route : this._route,
+				ip : this.ip
 			}
 		},
 			this._reqHeaders['sec-websocket-key'] ?? '',
@@ -841,6 +1128,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 			this._reqHeaders['sec-websocket-extensions'] ?? '',
 			this._socketContext
 		);
+
+		this._finish();
 	}
 
 }
@@ -915,6 +1204,11 @@ export class WSContext<Types extends ContextTypes = DefaultContextTypes>{
 
 	get route(){
 		return this._userData.snapshot.route;
+	}
+
+	// Client address resolved at upgrade time (trustProxy aware)
+	get ip(){
+		return this._userData.snapshot.ip;
 	}
 
 

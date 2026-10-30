@@ -1,0 +1,14 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"inputs": ["$TURBO_DEFAULT$", "../../docs/**", "../../README.md"],
+			"outputs": ["build/**"],
+			"env": ["BASE_PATH"]
+		},
+		"check-types": {
+			"dependsOn": ["^build"]
+		}
+	}
+}

@@ -2,11 +2,12 @@ import { Logger } from './module/logger.js';
 import { joinUri, definedProps } from './utils.js';
 import { HTTPErrorHandler } from './module/errorhandler.js';
 import { HTTPRoute, WSRoute, HTTPRouteOptions, WSRouteOptions, HTTPRouteMethod } from './route.js';
-import { ContextTypes } from './context.js';
+import { ContextTypes, RequestHook, ResponseHook, SustainOptions } from './context.js';
 import { MiddlewareHandler, WSHandler, PATCHHandlers, POSTHandlers, PUTHandlers, GETHandlers, HEADHandlers, OPTIONSHandlers, DELHandlers, Handlers, Handler } from './handler.js';
 import { BodyParser } from './module/bodyparser.js';
 import { ResponseSerializer } from './module/responseserializer.js';
 import { DefaultHandler } from './module/defaulthandler.js';
+import { RateLimiter } from './module/ratelimiter.js';
 import { Schemas, InferContextTypes } from './schema.js';
 import { DocGen } from './docgen/docgen.js';
 import { DocSchemaTranslator } from './docgen/docSchemaTranslator.js';
@@ -19,7 +20,18 @@ export interface Middleware<CT extends ContextTypes, EC extends any = {}>{
 	handler: MiddlewareHandler<CT, EC>;
 }
 
-export type RouterOptions = HTTPRouteOptions & WSRouteOptions & {
+export interface ResponseHookEntry{
+	pattern : string;
+	handler : ResponseHook;
+}
+
+export interface RequestHookEntry{
+	pattern : string;
+	handler : RequestHook;
+}
+
+// Router level hooks are registered with onRequest() : they add up, route defaults would replace each other
+export type RouterOptions = Omit<HTTPRouteOptions & WSRouteOptions, 'onRequest'> & {
 	defaultHandler? : DefaultHandler;
 }
 
@@ -29,6 +41,10 @@ export type RouterOptions = HTTPRouteOptions & WSRouteOptions & {
  */
 export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExtendContext extends any = {}>{
 	protected _middlewares : Middleware<any, any>[] = new Array();
+
+	protected _responseHooks : ResponseHookEntry[] = new Array();
+
+	protected _requestHooks : RequestHookEntry[] = new Array();
 
 	protected _httproutes : HTTPRoute<any, any>[] = new Array();
 	protected _wsroutes : WSRoute<any, any>[] = new Array();
@@ -84,6 +100,16 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					this._middlewares.push({...middleware, pattern : joinUri(pattern, middleware.pattern)});
 				}
 
+				for(let j = 0; j < router._responseHooks.length; j++){
+					const hook = router._responseHooks[j];
+					this._responseHooks.push({...hook, pattern : joinUri(pattern, hook.pattern)});
+				}
+
+				for(let j = 0; j < router._requestHooks.length; j++){
+					const hook = router._requestHooks[j];
+					this._requestHooks.push({...hook, pattern : joinUri(pattern, hook.pattern)});
+				}
+
 				// Copying route replacing none defined options by defined one
 				// definedProps avoids explicit undefined route properties from shadowing this router defaults
 				for(let j = 0; j < router._httproutes.length; j++){
@@ -117,6 +143,36 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			}
 		}
 
+		return this;
+	}
+
+	/**
+	 * Register a hook running before anything of the request is analysed : rate limiter, schemas,
+	 * body limit and middlewares all come after, so params and query are raw.
+	 * Pattern scoping follows middlewares. Answering through the context or throwing ends the request.
+	 * @param pattern
+	 * @param handler
+	 */
+	onRequest(handler : RequestHook) : this;
+	onRequest(pattern : string, handler : RequestHook) : this;
+	onRequest(...args : [RequestHook] | [string, RequestHook]){
+		const [pattern, handler] = args.length === 1 ? ['', args[0]] : args;
+		this._requestHooks.push({pattern, handler});
+		return this;
+	}
+
+	/**
+	 * Register a hook called once each response has ended : sent, aborted by the client,
+	 * upgraded to a websocket, or SSE stream closed. Receives the status code and the elapsed time.
+	 * Pattern scoping follows middlewares. Hooks run after the response : they cannot change it.
+	 * @param pattern
+	 * @param handler
+	 */
+	onResponse(handler : ResponseHook) : this;
+	onResponse(pattern : string, handler : ResponseHook) : this;
+	onResponse(...args : [ResponseHook] | [string, ResponseHook]){
+		const [pattern, handler] = args.length === 1 ? ['', args[0]] : args;
+		this._responseHooks.push({pattern, handler});
 		return this;
 	}
 
@@ -226,6 +282,11 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 		return this;
 	}
 
+	setDefaultRateLimiter(rateLimiter : RateLimiter | false | undefined){
+		this._defaultRouteOptions = {...this._defaultRouteOptions, rateLimiter};
+		return this;
+	}
+
 // ──────────────────────────
 // │ 📄 DOC GENERATION
 // ──────────────────────────
@@ -328,17 +389,18 @@ export class Router<DefaultContextTypes extends ContextTypes = any, DefaultExten
 	 * @param handlers 
 	 * @returns 
 	 */
-	sse<S extends Schemas, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions & {schemas : S}, ...handlers : GETHandlers<InferContextTypes<S>, EC>) : this;
-	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions & {schemas? : undefined}, ...handlers : GETHandlers<CT, EC>) : this;
+	sse<S extends Schemas, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions & SustainOptions & {schemas : S}, ...handlers : GETHandlers<InferContextTypes<S>, EC>) : this;
+	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, options : HTTPRouteOptions & SustainOptions & {schemas? : undefined}, ...handlers : GETHandlers<CT, EC>) : this;
 	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...handlers : GETHandlers<CT, EC>) : this;
 	sse<CT extends ContextTypes = DefaultContextTypes, EC extends any = DefaultExtendContext>(pattern: string, ...args : [HTTPRouteOptions, ...GETHandlers<CT, EC>] | GETHandlers<CT, EC>) {
-		const options : HTTPRouteOptions | undefined = typeof args[0] === "function" ? undefined : args.shift() as HTTPRouteOptions;
+		const options : (HTTPRouteOptions & SustainOptions) | undefined = typeof args[0] === "function" ? undefined : args.shift() as HTTPRouteOptions & SustainOptions;
 		const handlers : GETHandlers<CT, EC> = args as GETHandlers<CT, EC>;
-		
+		const sustain = (c : any) => c.sustain({heartbeat : options?.heartbeat});
+
 		if(options)
-			return this.add<CT, EC>('get', pattern, options, (c : any) => c.sustain(), ...handlers);
+			return this.add<CT, EC>('get', pattern, options, sustain, ...handlers);
 		else
-			return this.add<CT, EC>('get', pattern, (c : any) => c.sustain(), ...handlers);
+			return this.add<CT, EC>('get', pattern, sustain, ...handlers);
 	}
 
 	/**
