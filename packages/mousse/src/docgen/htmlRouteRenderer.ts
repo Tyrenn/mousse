@@ -1,5 +1,4 @@
-import { HTMLPage, Model, Response, Route, Router, RouterRenderer } from "./types.js";
-import hljs from 'highlight.js';
+import { Highlighter, HTMLPage, Model, Response, Route, Router, RouterRenderer } from "./types.js";
 
 
 
@@ -8,7 +7,10 @@ export class HTMLRouterRenderer implements RouterRenderer{
 	models? : Map<string, Model>;
 	usedModels : Set<string> = new Set();
 
-	constructor(models? : Model[] | Map<string, Model>){
+	private _highlight : Highlighter;
+
+	constructor(highlight : Highlighter, models? : Model[] | Map<string, Model>){
+		this._highlight = highlight;
 		if(models && Array.isArray(models)){
 			this.models = new Map(models.map(model => [model.name, model]));
 		}
@@ -24,7 +26,7 @@ export class HTMLRouterRenderer implements RouterRenderer{
 
 	private renderCode(code : string, usedModels : Array<string> = []){
 		const res : {html : string, usedModels : Set<string>} = {
-			html : `<pre><code class="language-typescript"><div class="global">${hljs.highlight(code.replaceAll('\t', `   `), {language : "typescript"}).value}</div></code></pre>\n`,
+			html : `<pre><code class="language-typescript"><div class="global">${this._highlight(code.replaceAll('\t', `   `))}</div></code></pre>\n`,
 			usedModels : new Set(usedModels)
 		}
 		
@@ -43,14 +45,15 @@ export class HTMLRouterRenderer implements RouterRenderer{
 
 	private renderRouteResponse(response : Response){
 		const code = this.renderCode(response.content);
+		const isError = !String(response.status).startsWith('2');
 		
 		return {
-			html : 	`<div class="response ${response.status > 299 ? 'error' : 'success'}">\n`
+			html : 	`<div class="response ${isError ? 'error' : 'success'}">\n`
 					+ 	`	<details>\n`
 					+ 	`		<summary>\n`
 					+ 	`			<div class="title">\n`
 					+ 	`				<div class="status">${response.status}</div>\n`
-					+ 	`				<p class="message">${response.summary.length > 0 ? response.summary : (response.status > 299 ? 'Error' : 'Ok')}</p>\n`
+					+ 	`				<p class="message">${response.summary.length > 0 ? response.summary : (isError ? 'Error' : 'Ok')}</p>\n`
 					+ 	`			</div>\n`
 					+ 	`		</summary>\n`
 					+ 	`		${this.addTab(code.html, 2)}\n`

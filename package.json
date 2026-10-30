@@ -9,6 +9,7 @@
 		"bench": "turbo run bench",
 		"test": "turbo run test",
 		"example": "pnpm --filter @mousse/examples start",
+		"site": "pnpm --filter @mousse/site dev",
 		"release": "turbo run build check-types test && changeset publish"
 	},
 	"devDependencies": {

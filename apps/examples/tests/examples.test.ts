@@ -8,6 +8,7 @@ import { app as schemas } from '../src/schemas.ts';
 import { app as routers } from '../src/routers.ts';
 import { app as sse } from '../src/sse.ts';
 import { app as docgen } from '../src/docgen.ts';
+import { app as rateLimit } from '../src/rateLimit.ts';
 
 /**
  * Examples are executable documentation : each one exports its app,
@@ -54,5 +55,20 @@ describe('examples smoke tests', () => {
 
 	test('docgen routes respond, registry is set up', () => testRouter(docgen, async (client) => {
 		assert.deepEqual(await (await client.get('/users/1')).json(), {id : '1', name : 'Guillaume'});
+	}));
+
+	test('rateLimit limits per router, per route, and shares a limiter', () => testRouter(rateLimit, async (client) => {
+		assert.equal((await client.get('/api/users')).headers.get('x-ratelimit-limit'), '100');
+		assert.equal((await client.get('/api/health')).headers.get('x-ratelimit-limit'), null);
+		assert.equal((await client.post('/api/search')).headers.get('x-ratelimit-limit'), '10');
+
+		for(let i = 0; i < 5; i++)
+			assert.equal((await client.post('/login')).status, 200);
+		const blocked = await client.post('/login');
+		assert.equal(blocked.status, 429);
+		assert.deepEqual(await blocked.json(), {error : 'Too many attempts, try again in 15 minutes'});
+
+		assert.equal((await client.post('/otp/send')).status, 200);
+		assert.equal((await client.post('/otp/resend')).headers.get('x-ratelimit-remaining'), '1');
 	}));
 });

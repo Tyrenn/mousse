@@ -1,5 +1,9 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { Router, testRouter } from '@tyren/mousse';
 
 describe('request', () => {
@@ -96,4 +100,95 @@ describe('response', () => {
 			assert.equal(await (await client.get('/twice')).text(), 'first');
 		}
 	));
+
+	test('multi-valued headers are written as separate lines', () => testRouter(
+		new Router().get('/cookies', (c) => {
+			c.header('set-cookie', ['a=1; Path=/', 'b=2; Path=/']);
+			c.appendHeader('Set-Cookie', 'c=3; Path=/');
+			c.appendHeader('x-single', 'one');
+			return 'ok';
+		}),
+		async (client) => {
+			const res = await client.get('/cookies');
+			assert.deepEqual(res.headers.getSetCookie(), ['a=1; Path=/', 'b=2; Path=/', 'c=3; Path=/']);
+			assert.equal(res.headers.get('x-single'), 'one');
+		}
+	));
+
+	test('custom status message', () => testRouter(
+		new Router().get('/teapot', (c) => c.status(418, 'Short and stout').respond()),
+		async (client) => {
+			const res = await client.get('/teapot');
+			assert.equal(res.status, 418);
+			assert.equal(res.statusText, 'Short and stout');
+		}
+	));
+});
+
+describe('delete body', () => {
+	test('DELETE body is readable', () => testRouter(
+		new Router().del('/items', async (c) => await c.body()),
+		async (client) => {
+			assert.deepEqual(await (await client.del('/items', {ids : [1, 2]})).json(), {ids : [1, 2]});
+		}
+	));
+});
+
+describe('file', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'mousse-file-'));
+	// Several MB so the socket backpressures and the stream has to pause / resume
+	const big = randomBytes(8 * 1024 * 1024);
+	writeFileSync(join(dir, 'big.bin'), big);
+	writeFileSync(join(dir, 'page.html'), '<h1>file</h1>');
+	writeFileSync(join(dir, 'empty.txt'), '');
+	after(() => rmSync(dir, {recursive : true, force : true}));
+
+	const router = new Router().get('/files/*', (c) => c.file(join(dir, c.url.slice('/files/'.length))));
+
+	test('streams a large file intact', () => testRouter(router, async (client) => {
+		const res = await client.get('/files/big.bin');
+		assert.equal(res.status, 200);
+		assert.equal(res.headers.get('content-length'), String(big.length));
+		assert.ok(Buffer.from(await res.arrayBuffer()).equals(big));
+	}));
+
+	test('sets content type from extension', () => testRouter(router, async (client) => {
+		const res = await client.get('/files/page.html');
+		assert.ok(res.headers.get('content-type')?.includes('text/html'));
+		assert.equal(await res.text(), '<h1>file</h1>');
+	}));
+
+	// Forward slashes on purpose : windows paths don't contain any, which used to hide the path in the header
+	test('content type never exposes the file path', () => testRouter(
+		new Router().get('/page', (c) => c.file(`${dir}/page.html`)),
+		async (client) => {
+			const res = await client.get('/page');
+			assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
+			await res.text();
+		}
+	));
+
+	test('empty file', () => testRouter(router, async (client) => {
+		const res = await client.get('/files/empty.txt');
+		assert.equal(res.status, 200);
+		assert.equal(await res.text(), '');
+	}));
+
+	test('client aborting mid-stream leaves the server healthy', () => testRouter(router, async (client) => {
+		const controller = new AbortController();
+		const res = await client.get('/files/big.bin', {signal : controller.signal});
+		const reader = res.body!.getReader();
+		await reader.read();
+		controller.abort();
+		await reader.read().catch(() => {});
+
+		// Server still serves the next requests
+		const again = await client.get('/files/big.bin');
+		assert.ok(Buffer.from(await again.arrayBuffer()).equals(big));
+	}));
+
+	test('missing file and directory -> 404',() => testRouter(router, async (client) => {
+		assert.equal((await client.get('/files/nope.txt')).status, 404);
+		assert.equal((await client.get('/files/')).status, 404);
+	}));
 });

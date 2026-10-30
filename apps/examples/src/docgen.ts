@@ -1,5 +1,6 @@
 import { Mousse } from '@tyren/mousse';
 import { z } from 'zod';
+import { resolve, sep } from 'node:path';
 
 export const port = 8080;
 
@@ -37,6 +38,13 @@ export async function run(){
 	await app.generateOpenAPIDoc({outputDir, info : {title : 'Example API', version : '1.0.0'}});
 	console.log(`Documentation generated in ${outputDir}`);
 
-	app.get('/*', (c) => c.file(`${outputDir}${c.url === '/' ? '/index.html' : c.url}`));
+	// c.file() uses the path as-is : keep requests inside the output directory ('/../../etc/passwd')
+	const root = resolve(outputDir);
+	app.get('/*', (c) => {
+		const path = resolve(root, `.${c.url === '/' ? '/index.html' : c.url}`);
+		if(!path.startsWith(root + sep))
+			return c.status(404).respond('Not found');
+		return c.file(path);
+	});
 	app.listen(port, (ls, p) => console.log(ls ? `Browse it on http://localhost:${p}` : 'Failed to listen'));
 }

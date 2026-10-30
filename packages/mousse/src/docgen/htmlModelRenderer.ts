@@ -1,17 +1,19 @@
-import hljs from 'highlight.js'
-import { Model, ModelGroup, ModelRenderer } from './types.js';
+import { Highlighter, Model, ModelGroup, ModelRenderer } from './types.js';
 
 export class HTMLModelRenderer implements ModelRenderer{
 
 	filter : string[] | undefined;
 
-	constructor(filter? : string[]){
+	private _highlight : Highlighter;
+
+	constructor(highlight : Highlighter, filter? : string[]){
+		this._highlight = highlight;
 		this.filter = filter;
 	}
 
 	renderModel(model : Model) : string{
 		let html = `<div class="model">`;
-		html +=`<pre><code class="language-typescript"><div class="global">${hljs.highlight(model.view.replaceAll('\t', `   `), {language : "typescript"}).value}</div></code></pre>\n`;
+		html +=`<pre><code class="language-typescript"><div class="global">${this._highlight(model.view.replaceAll('\t', `   `))}</div></code></pre>\n`;
 		html += `</div>`;
 		return html;
 	}

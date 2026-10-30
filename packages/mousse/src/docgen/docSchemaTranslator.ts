@@ -1,4 +1,4 @@
-import { StandardSchemaV1 } from '../schema.js';
+import { StandardSchemaV1, isStandardSchema, responseSchemaEntries } from '../schema.js';
 import { HTTPRoute } from '../route.js';
 
 export type JsonSchema = Record<string, any>;
@@ -33,13 +33,24 @@ export function missingDocSchemaVendors(httproutes : HTTPRoute<any, any>[], tran
 	const missing = new Set<string>();
 
 	for(const route of httproutes)
-		for(const schema of Object.values(route.schemas ?? {})){
-			const vendor = (schema as StandardSchemaV1)['~standard'].vendor;
+		for(const schema of routeSchemas(route)){
+			const vendor = schema['~standard'].vendor;
 			if(!translators.has(vendor))
 				missing.add(vendor);
 		}
 
 	return [...missing];
+}
+
+/**
+ * Every schema of a route, response schemas per status included
+ */
+function routeSchemas(route : HTTPRoute<any, any>) : StandardSchemaV1[] {
+	const {Response, ...request} = route.schemas ?? {};
+	return [
+		...Object.values(request).filter(isStandardSchema),
+		...responseSchemaEntries(Response).map(([, schema]) => schema)
+	];
 }
 
 /**

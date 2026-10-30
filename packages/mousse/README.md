@@ -8,6 +8,7 @@ Mousse is a Node.js web server framework developed in TypeScript and based on [�
 - 🛡️ Fully typed, ✅ [Standard Schema](https://standardschema.dev) validation (Zod, ArkType, Valibot...)
 - 📄 Documentation generation : self-styled HTML site or OpenAPI 3.1
 - 🧪 One-call route testing through a single ephemeral instance
+- 🚦 Rate limiting per route or per router, in memory or on Redis
 
 ```sh
 pnpm add @tyren/mousse    # or npm install @tyren/mousse

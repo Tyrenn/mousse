@@ -3,7 +3,7 @@ import { join } from 'path';
 import { DocGen } from './docgen.js';
 import { HTTPRoute, WSRoute } from '../route.js';
 import { DocSchemaTranslator, translateSchema, assertDocSchemaTranslators } from './docSchemaTranslator.js';
-import { StandardSchemaV1 } from '../schema.js';
+import { StandardSchemaV1, responseSchemaEntries } from '../schema.js';
 import { jsonSchemaToView, extractModels } from './jsonschema.js';
 import { HTMLRouterRenderer } from './htmlRouteRenderer.js';
 import { HTMLModelRenderer } from './htmlModelRenderer.js';
@@ -64,7 +64,12 @@ export class HTMLDocGen implements DocGen {
 			description : route.doc?.description ?? '',
 			body : this.schemaView(schemas?.Body),
 			querystring : this.schemaView(schemas?.Query),
-			responses : schemas?.Response ? [{status : 200, summary : '', content : this.schemaView(schemas.Response)}] : []
+			responses : responseSchemaEntries(schemas?.Response).map(([status, schema]) => ({
+				// A single schema documents the usual 200
+				status : status === '2xx' && !(schemas?.Response && typeof schemas.Response === 'object' && '2xx' in schemas.Response) ? 200 : status,
+				summary : '',
+				content : this.schemaView(schema)
+			}))
 		};
 	}
 
@@ -113,12 +118,16 @@ ${content}
 
 		const docRouters : DocRouter[] = [...groups.entries()].map(([name, routes]) => ({name, routes}));
 
+		// Loaded on demand : a server importing mousse never loads highlight.js
+		const {default : hljs} = await import('highlight.js');
+		const highlight = (code : string) => hljs.highlight(code, {language : 'typescript'}).value;
+
 		// Render router pages (models map already populated by toDocRoute)
-		const routerRenderer = new HTMLRouterRenderer(this._models);
+		const routerRenderer = new HTMLRouterRenderer(highlight, this._models);
 		const routerPages = routerRenderer.renderRouters(docRouters);
 
 		// Render only the models actually referenced by routes
-		const modelRenderer = new HTMLModelRenderer([...routerRenderer.usedModels]);
+		const modelRenderer = new HTMLModelRenderer(highlight, [...routerRenderer.usedModels]);
 		const modelPages = modelRenderer.renderModelGroup([{name : 'Models', models : [...this._models.values()]}]);
 
 		// Menu is rendered per depth so that relative links stay valid

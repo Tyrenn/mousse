@@ -1,13 +1,20 @@
 import {App as uWSApp, SSLApp as uWSSSLApp, TemplatedApp as uWSTemplatedApp, AppOptions as uWSAppOptions, us_listen_socket as uWSListenSocket, us_listen_socket_close as uWSListenSocketClose, RecognizedString, us_socket_local_port as uWSSocketLocalPort} from 'uWebSockets.js';
 import { Middleware, Router } from './router.js';
-import { Context, ContextTypes, WebSocket, WSContext} from './context.js';
+import { CompiledSerializer, Context, ContextTypes, RequestHook, ResponseHook, WebSocket, WSContext} from './context.js';
 import { HTTPRoute, WSRoute } from './route.js';
-import { DefaultBodyParser } from './module/bodyparser.js';
-import { DefaultResponseSerializer } from './module/responseserializer.js';
-import { matchPattern } from './utils.js';
-import { SchemaValidationError } from './schema.js';
+import { BodyParser, DefaultBodyParser } from './module/bodyparser.js';
+import { DefaultResponseSerializer, ResponseSerializer } from './module/responseserializer.js';
+import { matchPattern, compileTrustProxy, TrustProxy } from './utils.js';
+import { SchemaValidationError, StandardSchemaV1, responseSchemaEntries } from './schema.js';
+import { HTTPError } from './httperror.js';
 
-export type MousseOptions = uWSAppOptions;
+export type MousseOptions = uWSAppOptions & {
+	/**
+	 * Proxies allowed to set x-forwarded-for / -proto / -host : true (all), a list of IPs, CIDR ranges
+	 * or 'loopback' / 'private' / 'linklocal' aliases, or a predicate. Nothing is trusted by default.
+	 */
+	trustProxy? : TrustProxy;
+};
 
 
 
@@ -20,10 +27,16 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 	private _listenSocket : uWSListenSocket | undefined;
 
+	private _isTrustedProxy : (ip : string) => boolean;
+
+	private _ssl : boolean = false;
+
 
 	constructor(options? : MousseOptions){
 
 		super();
+
+		this._isTrustedProxy = compileTrustProxy(options?.trustProxy);
 
 		// uWebsocket.js c++ binding are pretty sensitive ! Require to filter any undefined value
 		const filteredOptions: uWSAppOptions = {};
@@ -35,14 +48,51 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			}
 		}
 		// uWS only enables TLS through SSLApp, plain App silently ignores SSL options
-		if(filteredOptions.key_file_name && filteredOptions.cert_file_name)
+		if(filteredOptions.key_file_name && filteredOptions.cert_file_name){
 			this._app = uWSSSLApp(filteredOptions);
+			this._ssl = true;
+		}
 		else if(Object.keys(filteredOptions).length > 0)
 			this._app = uWSApp(filteredOptions);
 		else
 			this._app = uWSApp();
 	}
 
+
+	/**
+	 * Whether the given address belongs to a trusted proxy (trustProxy option)
+	 * @internal
+	 */
+	isTrustedProxy(ip : string){
+		return this._isTrustedProxy(ip);
+	}
+
+	/**
+	 * Whether the app serves TLS directly
+	 */
+	get ssl(){
+		return this._ssl;
+	}
+
+	private _hooksFor(pattern : string) : ResponseHook[] {
+		return this._responseHooks.filter(hook => matchPattern(hook.pattern, pattern)).map(hook => hook.handler);
+	}
+
+	/**
+	 * What runs before anything of the request is analysed : router hooks, route hooks, then the rate limiter
+	 */
+	private _requestHooksFor(route : HTTPRoute<any, any> | WSRoute<any, any>) : RequestHook[] {
+		const hooks = this._requestHooks.filter(hook => matchPattern(hook.pattern, route.pattern)).map(hook => hook.handler);
+
+		if(route.onRequest)
+			hooks.push(...[route.onRequest].flat());
+
+		const rateLimiter = route.rateLimiter;
+		if(rateLimiter)
+			hooks.push(async (c) => { await rateLimiter.check(c); });
+
+		return hooks;
+	}
 
 	/**
 	 * Register a new route to uWebsocket App with an async handler iterating over matching middleware
@@ -63,14 +113,29 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		// Match params one time to avoid doing it in realtime everytime we build a context
 		const params = route.pattern.match(/:[\w]+/g) ?? []
+		const responseHooks = this._hooksFor(route.pattern);
+		const requestHooks = this._requestHooksFor(route);
+
+		// Modules are shared by every request of the route
+		const bodyParser : BodyParser<any> = route.bodyParser ?? new DefaultBodyParser();
+		const responseSerializer : ResponseSerializer<any> = route.responseSerializer ?? new DefaultResponseSerializer();
+
+		// Serializers are compiled once per response schema : an unsupported schema fails at startup
+		let compiledSerializers : Map<StandardSchemaV1, CompiledSerializer> | undefined;
+		if(responseSerializer.compile){
+			compiledSerializers = new Map();
+			for(const [, schema] of responseSchemaEntries(route.schemas?.Response))
+				compiledSerializers.set(schema, responseSerializer.compile(schema));
+		}
+
+		const validationErrorStatus = route.validationErrorStatus ?? 400;
 
 		this._app[route.method](route.pattern, async (ures, ureq) => {
 			// The body is built in a promise handled by here
 			const context = new Context(this, ureq, ures, route.pattern, params,
-				route.bodyParser ?? new DefaultBodyParser(),
-				route.responseSerializer ?? new DefaultResponseSerializer(),
-				route?.logger,
-				{method : route.method, schemas : route.schemas}
+				bodyParser, responseSerializer, route?.logger,
+				{method : route.method, schemas : route.schemas, bodyLimit : route.bodyLimit, compiledSerializers},
+				undefined, responseHooks
 			);
 			let res : any = undefined;
 
@@ -78,6 +143,14 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			const handleError = async (e : any) => {
 				if(route.httpErrorHandler){
 					await route.httpErrorHandler.handle(e, context);
+				}
+				else if(e instanceof HTTPError){
+					if(e.statusCode >= 500)
+						route.logger ? route.logger.log(e) : console.error(e);
+					if(!context.ended && !context.sustained)
+						context.status(e.statusCode).header('content-type', 'application/json')
+							.respond(JSON.stringify({error : e.message}));
+					return;
 				}
 				else if(e instanceof SchemaValidationError){
 					// Invalid request data -> 400 with issues, invalid response data -> 500
@@ -87,7 +160,7 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 						if(e.part === 'response')
 							context.status(500).respond();
 						else
-							context.status(400).header('content-type', 'application/json')
+							context.status(validationErrorStatus).header('content-type', 'application/json')
 								.respond(JSON.stringify({error : `Invalid ${e.part}`, issues : e.issues}));
 					}
 					return;
@@ -102,16 +175,37 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 			};
 
 			try{
-				// Params and query are validated against route schemas before anything runs
+				// Before anything is analysed : what gets rejected here costs nothing, invalid requests included
+				for (let i = 0; i < requestHooks.length; i++){
+					await requestHooks[i](context);
+					if(context.ended)
+						return;
+				}
+
+				// A declared content-length above the route bodyLimit is rejected before middlewares run
+				context.checkBodyLimit();
+
+				// Params and query are validated against route schemas before middlewares run
 				await context.applySchemas();
 
-				for (let i = 0; i < appliedMiddlewares.length; i++)
+				// A middleware answering (or a client going away) ends the request : nothing else runs
+				for (let i = 0; i < appliedMiddlewares.length; i++){
 					await appliedMiddlewares[i].handler(context);
+					if(context.ended)
+						return;
+				}
 
 				// Route scoped middlewares run after router level ones
 				if(route.middlewares)
-					for (let i = 0; i < route.middlewares.length; i++)
+					for (let i = 0; i < route.middlewares.length; i++){
 						await route.middlewares[i](context);
+						if(context.ended)
+							return;
+					}
+
+				// The handler always gets a validated body : middlewares (auth...) ran first, without paying for it
+				if(route.schemas?.Body)
+					await context.body();
 
 				res = await route.handler(context);
 			} catch(e) {
@@ -124,7 +218,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 				try{
 					if(typeof res === "string")
 						context.respond(res);
-					else if(!!res && typeof res === 'object')
+					// A returned context ('return c.status(201)') is not a payload
+					else if(!!res && typeof res === 'object' && !(res instanceof Context))
 						context.json(res);
 					else
 						context.respond();
@@ -155,6 +250,8 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 
 		// Match params one time to avoid doing it in realtime everytime we build a context
 		const params = route.pattern.match(/:[\w]+/g) ?? [];
+		const responseHooks = this._hooksFor(route.pattern);
+		const requestHooks = this._requestHooksFor(route);
 
 		this._app.ws(route.pattern, {
 			upgrade : async (ures, ureq, wsc) => {
@@ -164,21 +261,43 @@ export class Mousse<DefaultContextTypes extends ContextTypes = any, DefaultExten
 					route.bodyParser ?? new DefaultBodyParser(),
 					route.responseSerializer ?? new DefaultResponseSerializer(),
 					route?.logger,
-					undefined, {socket : wsc, maxBackPressure : route?.maxBackPressure});
+					undefined, {socket : wsc, maxBackPressure : route?.maxBackPressure}, responseHooks);
 				try{
-					for (let i = 0; i < appliedMiddlewares.length; i++)
+					for (let i = 0; i < requestHooks.length; i++){
+						await requestHooks[i](context);
+						if(context.ended)
+							return;
+					}
+
+					// A middleware answering rejects the upgrade : nothing else runs
+					for (let i = 0; i < appliedMiddlewares.length; i++){
 						await appliedMiddlewares[i].handler(context);
+						if(context.ended)
+							return;
+					}
 
 					if(route.middlewares)
-						for (let i = 0; i < route.middlewares.length; i++)
+						for (let i = 0; i < route.middlewares.length; i++){
 							await route.middlewares[i](context);
+							if(context.ended)
+								return;
+						}
 
 					// No middleware responded : upgrade. The route handler runs at open, connected.
-					if(!context.ended && context.upgradable && !context.upgraded)
+					if(context.upgradable && !context.upgraded)
 						context.upgrade();
 				} catch(e) {
 					if(route.httpErrorHandler)
 						await route.httpErrorHandler.handle(e, context);
+					else if(e instanceof HTTPError){
+						// Same answer as on an HTTP route : the upgrade is rejected with this status
+						if(e.statusCode >= 500)
+							route.logger ? route.logger.log(e) : console.error(e);
+						if(!context.ended)
+							context.status(e.statusCode).header('content-type', 'application/json')
+								.respond(JSON.stringify({error : e.message}));
+						return;
+					}
 					else
 						console.error(e);
 

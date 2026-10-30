@@ -1,10 +1,11 @@
 
 
-import { ContextTypes } from "./context.js";
+import { ContextTypes, RequestHook } from "./context.js";
 import { Handler, MiddlewareHandler, WSHandler } from "./handler.js";
 import { BodyParser } from "./module/bodyparser.js";
 import { HTTPErrorHandler, WSErrorHandler } from "./module/errorhandler.js";
 import { Logger } from "./module/logger.js";
+import { RateLimiter } from "./module/ratelimiter.js";
 import { ResponseSerializer } from "./module/responseserializer.js";
 import { Schemas } from "./schema.js";
 
@@ -31,6 +32,18 @@ export interface HTTPRouteOptions {
 	bodyParser? : BodyParser<any>;
 	responseSerializer? : ResponseSerializer<any>;
 
+	// Maximum request body size in bytes, 1 MiB by default. Larger bodies are answered 413
+	bodyLimit? : number;
+
+	// Status of invalid request data (body, query, params) responses, 400 by default
+	validationErrorStatus? : number;
+
+	// Runs before anything of the request is analysed, false disables the one inherited from the router
+	rateLimiter? : RateLimiter | false;
+
+	// Hooks dedicated to this route only, applied after the router level ones and before the rate limiter
+	onRequest? : RequestHook | RequestHook[];
+
 	httpErrorHandler? : HTTPErrorHandler;
 	logger? : Logger;
 
@@ -49,6 +62,10 @@ export class HTTPRoute<CT extends ContextTypes, CE extends any = {}> {
 	doc? : RouteDoc;
 	bodyParser? : BodyParser<any>;
 	responseSerializer? : ResponseSerializer<any>;
+	bodyLimit? : number;
+	validationErrorStatus? : number;
+	rateLimiter? : RateLimiter | false;
+	onRequest? : RequestHook | RequestHook[];
 	httpErrorHandler? : HTTPErrorHandler;
 	logger? : Logger;
 
@@ -64,6 +81,10 @@ export class HTTPRoute<CT extends ContextTypes, CE extends any = {}> {
 
 		this.bodyParser = options.bodyParser;
 		this.responseSerializer = options.responseSerializer;
+		this.bodyLimit = options.bodyLimit;
+		this.validationErrorStatus = options.validationErrorStatus;
+		this.rateLimiter = options.rateLimiter;
+		this.onRequest = options.onRequest;
 
 		this.httpErrorHandler = options.httpErrorHandler;
 
@@ -87,6 +108,12 @@ export type WSRouteOptions = {
 	bodyParser? : BodyParser<any>;
 	responseSerializer? : ResponseSerializer<any>;
 
+	// Runs on the upgrade request before its middlewares, false disables the one inherited from the router
+	rateLimiter? : RateLimiter | false;
+
+	// Hooks dedicated to this route only, applied after the router level ones and before the rate limiter
+	onRequest? : RequestHook | RequestHook[];
+
 	httpErrorHandler? : HTTPErrorHandler;
 	wsErrorHandler? : WSErrorHandler;
 
@@ -107,6 +134,8 @@ export class WSRoute<CT extends ContextTypes, CE extends any = {}> {
 	doc? : RouteDoc;
 	bodyParser? : BodyParser<any>;
 	responseSerializer? : ResponseSerializer<any>;
+	rateLimiter? : RateLimiter | false;
+	onRequest? : RequestHook | RequestHook[];
 	httpErrorHandler? : HTTPErrorHandler;
 	wsErrorHandler? : WSErrorHandler;
 	logger? : Logger;
@@ -122,7 +151,10 @@ export class WSRoute<CT extends ContextTypes, CE extends any = {}> {
 
 		this.bodyParser = options.bodyParser;
 		this.responseSerializer = options.responseSerializer;
-		
+
+		this.rateLimiter = options.rateLimiter;
+		this.onRequest = options.onRequest;
+
 		this.httpErrorHandler = options.httpErrorHandler;
 		this.wsErrorHandler = options.wsErrorHandler;
 

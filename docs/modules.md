@@ -12,7 +12,8 @@ const app = new Mousse();
 app.setDefaultLogger(myLogger)
 	.setDefaultHTTPErrorHandler(myErrorHandler)
 	.setDefaultBodyParser(myBodyParser)
-	.setDefaultResponseSerializer(mySerializer);
+	.setDefaultResponseSerializer(mySerializer)
+	.setDefaultRateLimiter(myRateLimiter);
 
 const router = new Router({ logger: routerLogger });
 
@@ -48,12 +49,25 @@ Turns the value passed to `c.json()` (or returned by a handler) into a sendable 
 ```ts
 interface ResponseSerializer<SchemaDefault> {
 	serialize(res?: Response, schema?: SchemaDefault): string | Buffer | ArrayBuffer;
+	// Optional : one serializer per Response schema, built at route registration
+	compile?(schema: SchemaDefault): (res: any) => string | Buffer | ArrayBuffer;
 }
 ```
 
-`DefaultResponseSerializer` is `JSON.stringify`.
+`DefaultResponseSerializer` is `JSON.stringify`. See [compiled serializers](schemas.md#schemas-and-serializers).
 
 The `schema` argument of both interfaces receives the route's `schemas` option, enabling schema-aware implementations — see [Schemas](schemas.md#schemas-and-serializers). The defaults ignore it; validation is performed by Mousse itself either way.
+
+## RateLimiter
+
+Decides whether a request may go on, before anything of it is analysed. Off until you set one : `DefaultRateLimiter` is provided. `false` on a route disables the one inherited from its router. See [Rate limiting](rate-limiting.md).
+
+```ts
+interface RateLimiter {
+	// Throw or answer through the context to reject the request
+	check(c): void | Promise<void>;
+}
+```
 
 ## Logger
 
