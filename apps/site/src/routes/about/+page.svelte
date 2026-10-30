@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Logo from '#lib/Logo.svelte';
-
 	let {data} = $props();
 
 	const GITHUB = 'https://github.com/Tyrenn';
@@ -8,48 +6,39 @@
 
 <svelte:head>
 	<title>About : Mousse</title>
-	<meta name="description" content="Mousse and Hélice, a web framework and a PostgreSQL query builder for TypeScript, by Guillaume Vailland." />
+	<meta name="description" content="Mousse is a personal project by Guillaume Vailland, maintained on a volunteer basis. How to contribute, and Hélice, a typesafe PostgreSQL query builder." />
 </svelte:head>
 
 <main class="page">
 	<h1>About</h1>
 	<p class="lead">
-		Mousse is written and maintained by <strong>Guillaume Vailland</strong>, known as
-		<a href={GITHUB}>Tyrenn on GitHub</a>, from Nantes, France. It sits next to Hélice : one handles your requests, the other your queries.
+		Hello there ! I'm <a href="https://www.linkedin.com/in/guillaume-vailland-136408125/">Guillaume Vailland</a> (Tyren), a humble typescript developer from Nantes, France.
+	</p>
+	<p class="lead">
+		I started Mousse as a personal project, to learn how frameworks like these work under the hood. It draws heavily on its peers, such as
+		Express, Fastify and Koa. I'm very happy to have reached a version mature enough to be published and used in production, and I intend to
+		keep maintaining and improving it on a volunteer basis.
 	</p>
 
-	<div class="projects">
-		<section>
-			<div class="title">
-				<Logo size={40} />
-				<h2>Mousse</h2>
-			</div>
-			<p>
-				A typed Node.js web framework on µWebSockets.js. HTTP, WebSockets and Server-Sent Events share one
-				<code>Context</code> API, and your schemas validate requests and type your handlers.
-			</p>
-			<a href="{GITHUB}/mousse">Tyrenn/mousse</a>
-		</section>
-
-		<section>
-			<div class="title">
-				<span class="propeller" aria-hidden="true">🛩</span>
-				<h2>Hélice</h2>
-			</div>
-			<p>
-				A fluent, typesafe PostgreSQL query builder for TypeScript. You give it your database schema as plain types, with no schema
-				file, no codegen and no decorators, and it has no runtime dependency.
-			</p>
-			<div class="code">
-				<pre>{@html data.helice}</pre>
-			</div>
-			<p class="aside">
-				“Hélice”, pronounced <em>ay-lees</em>, is French for propeller, which looks a bit like a <em>q</em> and a <em>b</em> of
-				query builder stacked on top of each other.
-			</p>
-			<a href="{GITHUB}/helice">Tyrenn/helice</a>
-		</section>
-	</div>
+	<h2 class="more">My other work</h2>
+	<section>
+		<div class="title">
+			<span class="propeller" aria-hidden="true">🛩</span>
+			<h3>Hélice</h3>
+		</div>
+		<p>
+			A fluent, typesafe PostgreSQL query builder for TypeScript. You give it your database schema as plain types, with no schema
+			file, no codegen and no decorators, and it has no runtime dependency.
+		</p>
+		<div class="code">
+			<pre>{@html data.helice}</pre>
+		</div>
+		<p class="aside">
+			“Hélice”, pronounced <em>ay-lees</em>, is French for propeller, which looks a bit like a <em>q</em> and a <em>b</em> of
+			query builder stacked on top of each other.
+		</p>
+		<a href="{GITHUB}/helice">Tyrenn/helice</a>
+	</section>
 
 	<h2 class="more" id="contributing">Contributing</h2>
 	<p class="intro">
@@ -78,7 +67,9 @@
 </main>
 
 <style>
+	/* A single reading column, centered by .page */
 	main{
+		--page : 52rem;
 		padding-block : clamp(40px, 6vw, 72px);
 	}
 
@@ -87,19 +78,11 @@
 	}
 
 	.lead{
-		max-width : 44rem;
-		margin : 16px 0 40px;
+		margin : 16px 0 0;
 		font-size : 1.1rem;
 	}
 
-	.projects{
-		display : grid;
-		grid-template-columns : repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-		gap : 20px;
-	}
-
 	section{
-		min-width : 0;
 		padding : 24px;
 		border : 1px solid var(--line);
 		border-radius : 18px;
@@ -123,6 +106,10 @@
 		font-size : 1.6rem;
 	}
 
+	h3{
+		font-size : 1.4rem;
+	}
+
 	section p{
 		margin : 0 0 14px;
 	}
@@ -141,14 +128,12 @@
 	}
 
 	.intro{
-		max-width : 44rem;
 		margin : 0 0 20px;
 	}
 
 	.steps{
 		display : grid;
 		gap : 20px;
-		max-width : 52rem;
 		margin : 0;
 		padding-left : 1.4rem;
 	}

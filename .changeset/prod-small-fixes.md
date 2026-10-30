@@ -1,5 +1,5 @@
 ---
-"@tyren/mousse": major
+"@tyren/mousse": minor
 ---
 
 Production fixes on Context:
