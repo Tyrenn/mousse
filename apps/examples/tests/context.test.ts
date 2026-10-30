@@ -158,6 +158,16 @@ describe('file', () => {
 		assert.equal(await res.text(), '<h1>file</h1>');
 	}));
 
+	// Forward slashes on purpose : windows paths don't contain any, which used to hide the path in the header
+	test('content type never exposes the file path', () => testRouter(
+		new Router().get('/page', (c) => c.file(`${dir}/page.html`)),
+		async (client) => {
+			const res = await client.get('/page');
+			assert.equal(res.headers.get('content-type'), 'text/html; charset=utf-8');
+			await res.text();
+		}
+	));
+
 	test('empty file', () => testRouter(router, async (client) => {
 		const res = await client.get('/files/empty.txt');
 		assert.equal(res.status, 200);

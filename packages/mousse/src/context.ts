@@ -1,6 +1,7 @@
 import { RecognizedString, HttpRequest as uHttpRequest, HttpResponse as uHttpResponse, us_socket_context_t as uWSSocketContext, WebSocket as uWSWebSocket } from 'uWebSockets.js';
 import { stat } from 'fs/promises';
 import { createReadStream } from 'fs';
+import { basename } from 'path';
 import mime_types from "mime-types";
 import {STATUS_CODES} from 'http'
 import type { Mousse } from './mousse.js';
@@ -874,7 +875,8 @@ export class Context<Types extends ContextTypes = DefaultContextTypes> implement
 		if(this._ended)
 			return;
 
-		this.type(path.toLowerCase());
+		// Only the file name : mime-types takes anything containing a '/' for a mime type and would send the path back
+		this.type(basename(path).toLowerCase());
 
 		if(size === 0){
 			this.respond('');
