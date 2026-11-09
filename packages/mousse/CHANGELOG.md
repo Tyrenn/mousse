@@ -1,4 +1,4 @@
-# @tyren/mousse
+# @moussejs/core
 
 ## 1.1.0
 

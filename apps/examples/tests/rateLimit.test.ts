@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { Mousse, Router, testRouter, HTTPError, RateLimitError, DefaultRateLimiter, type RateLimitStore, type RateLimiter } from '@tyren/mousse';
+import { Mousse, Router, testRouter, HTTPError, RateLimitError, DefaultRateLimiter, type RateLimitStore, type RateLimiter } from '@moussejs/core';
 import { z } from 'zod';
 
 const sleep = (ms : number) => new Promise((resolve) => setTimeout(resolve, ms));

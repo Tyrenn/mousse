@@ -1,7 +1,7 @@
 import { test, describe, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import RedisMock from 'ioredis-mock';
-import { LocalRateLimitStore, RedisRateLimitStore } from '@tyren/mousse';
+import { LocalRateLimitStore, RedisRateLimitStore } from '@moussejs/core';
 
 const options = {timeWindow : 1000, max : 2, continueExceeding : false, exponentialBackoff : false};
 

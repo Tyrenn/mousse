@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { Mousse, HTTPError } from '@tyren/mousse';
+import { Mousse, HTTPError } from '@moussejs/core';
 
 /**
  * WebSocket upgrades are not covered by RouteTester : these tests bind a real

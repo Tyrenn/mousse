@@ -1,4 +1,4 @@
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 export const port = 8080;
 

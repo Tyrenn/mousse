@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, Mousse, testRouter, HTTPError } from '@tyren/mousse';
+import { Router, Mousse, testRouter, HTTPError } from '@moussejs/core';
 import { z } from 'zod';
 
 describe('request hooks', () => {

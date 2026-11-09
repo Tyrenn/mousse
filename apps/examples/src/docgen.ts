@@ -1,4 +1,4 @@
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 import { z } from 'zod';
 import { resolve, sep } from 'node:path';
 

@@ -11,11 +11,11 @@ Mousse is a Node.js web server framework developed in TypeScript and based on [Â
 - ðŸš¦ Rate limiting per route or per router, in memory or on Redis
 
 ```sh
-pnpm add @tyren/mousse    # or npm install @tyren/mousse
+pnpm add @moussejs/core    # or npm install @moussejs/core
 ```
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 new Mousse()
 	.get('/hello', (c) => 'Hello World !')

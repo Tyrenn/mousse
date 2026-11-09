@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { Router, testRouter } from '@tyren/mousse';
+import { Router, testRouter } from '@moussejs/core';
 
 describe('request', () => {
 	test('headers are exposed with lowercased keys', () => testRouter(

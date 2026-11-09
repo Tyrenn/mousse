@@ -79,7 +79,7 @@ Middlewares must be registered **before** `listen()` is called; routes are bound
 A `Router` is a collection of routes and middlewares that can be mounted on an app (or another router) with `use`:
 
 ```ts
-import { Router } from '@tyren/mousse';
+import { Router } from '@moussejs/core';
 
 const users = new Router();
 users.get('/', (c) => 'user list');
@@ -186,7 +186,7 @@ When a middleware or handler throws:
 3. If the response was still not sent, Mousse responds with a `500`. Errors never end up as an implicit `200`.
 
 ```ts
-import { HTTPError } from '@tyren/mousse';
+import { HTTPError } from '@moussejs/core';
 
 app.get('/offers/:idOffer', async (c) => {
 	const offer = await findOffer(c.param('idOffer'));

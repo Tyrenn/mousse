@@ -21,19 +21,24 @@
 			<a href={`${resolve('/docs')}/`}>Docs</a>
 			<a href={`${resolve('/about')}/`}>About</a>
 			<a class="github" href="https://github.com/Tyrenn/mousse">GitHub</a>
-			<a class="npm" href="https://www.npmjs.com/package/@tyren/mousse">npm</a>
+			<a class="npm" href="https://www.npmjs.com/package/@moussejs/core">npm</a>
 		</div>
 	</nav>
 </header>
 
 {@render children()}
 
+<a class="sponsor" href="https://github.com/sponsors/Tyrenn" aria-label="Sponsor Mousse on GitHub">
+	<span class="heart" aria-hidden="true">♥</span>
+	<span class="sponsor-label">Sponsor</span>
+</a>
+
 <footer>
 	<div class="page">
 		<span>MIT licensed. In French, <em>mousse</em> is soap foam : thousands of bubbles, the requests.</span>
 		<span class="footer-links">
 			<a href="https://github.com/Tyrenn/mousse">GitHub</a>
-			<a href="https://www.npmjs.com/package/@tyren/mousse">npm</a>
+			<a href="https://www.npmjs.com/package/@moussejs/core">npm</a>
 			<a href="https://github.com/Tyrenn/mousse/issues">Report an issue</a>
 		</span>
 	</div>
@@ -96,8 +101,40 @@
 		color : var(--navy);
 	}
 
+	/* Always one click away, above the content */
+	.sponsor{
+		position : fixed;
+		right : 16px;
+		bottom : 16px;
+		z-index : 20;
+		display : flex;
+		align-items : center;
+		gap : 6px;
+		padding : 8px 14px;
+		border : 1px solid var(--navy-line);
+		border-radius : 999px;
+		background : var(--navy);
+		box-shadow : 0 4px 16px rgb(0 33 55 / 0.25);
+		color : var(--on-navy);
+		font-size : 0.88rem;
+		font-weight : 600;
+		text-decoration : none;
+		transition : transform 0.15s;
+	}
+
+	.sponsor:hover{
+		transform : translateY(-2px);
+	}
+
+	.heart{
+		color : #ea4aaa;
+		font-size : 1.05rem;
+		line-height : 1;
+	}
+
+	/* The bottom padding keeps the footer links clear of the sponsor badge */
 	footer{
-		padding-block : 28px;
+		padding-block : 28px 76px;
 		border-top : 1px solid var(--line);
 		color : var(--text-muted);
 		font-size : 0.875rem;
@@ -127,6 +164,15 @@
 
 		.links .start{
 			padding-inline : 10px;
+		}
+
+		/* The heart alone, to cover as little text as possible */
+		.sponsor{
+			padding : 10px;
+		}
+
+		.sponsor-label{
+			display : none;
 		}
 	}
 

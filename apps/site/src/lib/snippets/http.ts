@@ -1,4 +1,4 @@
-import { Mousse, Router, HTTPError } from '@tyren/mousse';
+import { Mousse, Router, HTTPError } from '@moussejs/core';
 
 const users = new Router()
 	.use((c) => {

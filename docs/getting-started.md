@@ -9,7 +9,7 @@ Mousse is a Node.js web framework written in TypeScript, built on [µWebSockets.
 ## Installation
 
 ```sh
-pnpm add @tyren/mousse    # or npm install @tyren/mousse
+pnpm add @moussejs/core    # or npm install @moussejs/core
 ```
 
 µWebSockets.js ships prebuilt binaries only. It supports **Node.js 22, 24 and 26** on **glibc** Linux (x64, arm64), macOS and Windows. Alpine (musl) and odd Node versions (23, 25) fail at import with an explicit error : use a glibc image such as `node:24-slim`.
@@ -19,7 +19,7 @@ It is installed from GitHub rather than npm, so package managers blocking git de
 ## Your first route
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 new Mousse()
 	.get('/hello', (c) => 'Hello World !')
@@ -35,7 +35,7 @@ curl http://localhost:3000/hello    # Hello World !
 `c` is the `Context` : it wraps the request and the response, and carries everything a handler needs. A handler returns a value, or answers itself:
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 new Mousse()
 	.get('/users/:id', (c) => ({ id: c.param('id') }))       // an object is sent as json
@@ -53,7 +53,7 @@ Continue with [Routing](routing.md) and [Context](context.md).
 A middleware receives the same `Context` as the handler. It runs before the handler, and answering or throwing ends the request : nothing after it runs.
 
 ```ts
-import { Mousse, Router, HTTPError } from '@tyren/mousse';
+import { Mousse, Router, HTTPError } from '@moussejs/core';
 
 const admin = new Router()
 	.use((c) => {
@@ -76,7 +76,7 @@ new Mousse()
 Attach [Standard Schema](https://standardschema.dev) schemas (Zod, ArkType, Valibot...) to a route : requests are validated at runtime and the handler is typed from them, with no generics to write.
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 import { z } from 'zod';
 
 new Mousse()
@@ -100,7 +100,7 @@ The same schemas feed the [documentation generators](docgen.md). See [Schemas](s
 Real-time channels use the same routing and `Context` API. A `ws` route separates the **upgrade phase**, plain HTTP middlewares that can refuse the connection, from the **connected phase**, where the handler gets an open socket with events, pub/sub and backpressure handling.
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 new Mousse()
 	.ws<{ Params: 'room' }>('/chat/:room',
@@ -123,7 +123,7 @@ See [WebSockets](websockets.md) and [Server-Sent Events](server-sent-events.md).
 No port to manage : `testRouter` fires real requests through a single ephemeral instance.
 
 ```ts
-import { Router, testRouter } from '@tyren/mousse';
+import { Router, testRouter } from '@moussejs/core';
 
 const users = new Router().get('/users/:id', (c) => ({ id: c.param('id') }));
 
@@ -142,7 +142,7 @@ See [Testing routes](testing.md).
 Pass the µWebSockets.js SSL options to the constructor. When both `key_file_name` and `cert_file_name` are provided, Mousse creates an SSL application:
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 const app = new Mousse({
 	key_file_name: 'misc/key.pem',
@@ -156,7 +156,7 @@ const app = new Mousse({
 Behind a load balancer or reverse proxy, declare which peers may set `x-forwarded-for`, `x-forwarded-proto` and `x-forwarded-host`. Nothing is trusted by default.
 
 ```ts
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 const app = new Mousse({
 	trustProxy: ['loopback', '10.0.0.0/8']   // IPs, CIDR ranges, 'loopback' / 'private' / 'linklocal', or (ip) => boolean

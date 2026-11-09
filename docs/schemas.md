@@ -102,7 +102,7 @@ An invalid **response** is a server bug: the client gets an empty `500` and the 
 To customize this behavior, set an `httpErrorHandler` (per route or as a router default) and check for `SchemaValidationError`:
 
 ```ts
-import { SchemaValidationError } from '@tyren/mousse';
+import { SchemaValidationError } from '@moussejs/core';
 
 const errorHandler = {
 	handle: (error, c) => {

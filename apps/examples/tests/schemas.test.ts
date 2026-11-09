@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Router, testRouter, SchemaValidationError } from '@tyren/mousse';
+import { Router, testRouter, SchemaValidationError } from '@moussejs/core';
 import { z } from 'zod';
 
 describe('schema validation', () => {

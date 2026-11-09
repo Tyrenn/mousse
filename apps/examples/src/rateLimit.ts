@@ -1,4 +1,4 @@
-import { Mousse, Router, HTTPError, DefaultRateLimiter } from '@tyren/mousse';
+import { Mousse, Router, HTTPError, DefaultRateLimiter } from '@moussejs/core';
 
 export const port = 8080;
 

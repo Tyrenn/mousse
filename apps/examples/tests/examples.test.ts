@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { testRouter } from '@tyren/mousse';
+import { testRouter } from '@moussejs/core';
 
 import { app as asyncFunction } from '../src/asyncFunction.ts';
 import { app as contextExtension } from '../src/contextExtension.ts';

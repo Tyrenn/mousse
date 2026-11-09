@@ -33,7 +33,7 @@ Translators are registered on the router (or the app) under their library's **ve
 
 ```ts
 import { z } from 'zod';
-import { arkTypeDocSchemaTranslator } from '@tyren/mousse';
+import { arkTypeDocSchemaTranslator } from '@moussejs/core';
 
 app.addDocSchemaTranslator('zod', z.toJSONSchema);              // Zod >= 3.24 exposes this natively
 app.addDocSchemaTranslator('arktype', arkTypeDocSchemaTranslator);  // ready-made helper
