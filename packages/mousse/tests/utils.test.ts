@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { joinUri, parseQueryString, normalizeIp, compileTrustProxy } from '@tyren/mousse';
+import { joinUri, parseQueryString, normalizeIp, compileTrustProxy } from '@moussejs/core';
 import { matchPattern, definedProps } from '../dist/utils.js';
 
 describe('joinUri', () => {

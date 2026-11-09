@@ -44,7 +44,7 @@
 			<div class="actions">
 				<a class="button primary" href={docHref('getting-started')}>Get started</a>
 				<div class="code install">
-					<pre><code>pnpm add @tyren/mousse</code></pre>
+					<pre><code>pnpm add @moussejs/core</code></pre>
 					<button type="button" class="copy" onclick={(event) => copyCode(event.currentTarget)}>Copy</button>
 				</div>
 			</div>

@@ -26,7 +26,7 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.28)
-      '@tyren/mousse':
+      '@moussejs/core':
         specifier: workspace:*
         version: link:../../packages/mousse
       autocannon:
@@ -69,7 +69,7 @@ importers:
 
   apps/examples:
     dependencies:
-      '@tyren/mousse':
+      '@moussejs/core':
         specifier: workspace:*
         version: link:../../packages/mousse
     devDependencies:
@@ -97,6 +97,9 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@moussejs/core':
+        specifier: workspace:*
+        version: link:../../packages/mousse
       '@sveltejs/adapter-static':
         specifier: 4.0.0
         version: 4.0.0(@sveltejs/kit@3.1.0(@sveltejs/vite-plugin-svelte@7.3.1(svelte@5.57.3)(vite@8.3.5(@types/node@26.1.1)))(svelte@5.57.3)(typescript@6.0.3)(vite@8.3.5(@types/node@26.1.1)))
@@ -109,9 +112,6 @@ importers:
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
-      '@tyren/mousse':
-        specifier: workspace:*
-        version: link:../../packages/mousse
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1

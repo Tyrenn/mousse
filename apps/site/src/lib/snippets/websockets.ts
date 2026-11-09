@@ -1,4 +1,4 @@
-import { Mousse } from '@tyren/mousse';
+import { Mousse } from '@moussejs/core';
 
 new Mousse()
 	.ws<{ Params: 'room' }>('/chat/:room',

@@ -1,4 +1,4 @@
-import { Mousse, SchemaValidationError } from '@tyren/mousse';
+import { Mousse, SchemaValidationError } from '@moussejs/core';
 import { z } from 'zod';
 
 export const port = 8080;

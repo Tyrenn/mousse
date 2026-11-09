@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { ipKey } from '@tyren/mousse';
+import { ipKey } from '@moussejs/core';
 import { formatDuration, parseTimeWindow } from '../dist/utils.js';
 
 describe('parseTimeWindow', () => {

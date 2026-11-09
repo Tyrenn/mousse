@@ -1,58 +1,100 @@
 <script lang="ts">
 	let {data} = $props();
 
-	const GITHUB = 'https://github.com/Tyrenn';
+	const REPO = 'https://github.com/Tyrenn/mousse';
+	const INDEX = 'https://tyrenn.github.io/';
+	const SPONSOR = 'https://github.com/sponsors/Tyrenn';
+
+	const ways = [
+		{
+			title : 'Report a bug',
+			text : 'Something breaks, or behaves unlike the docs say ? An issue with a minimal reproduction is the most useful help.',
+			href : `${REPO}/issues/new`,
+			label : 'Open an issue'
+		},
+		{
+			title : 'Suggest a feature',
+			text : 'A missing module, a rough API, a use case Mousse does not cover yet : describe it in an issue before writing code.',
+			href : `${REPO}/issues`,
+			label : 'Browse issues'
+		},
+		{
+			title : 'Improve the docs',
+			text : 'This site is built from the README and the docs folder. A typo fix or a clearer example is a welcome pull request.',
+			href : `${REPO}/tree/main/docs`,
+			label : 'docs/'
+		}
+	];
+
+	const layout = [
+		{path : 'packages/mousse', text : 'The framework, with its unit tests'},
+		{path : 'apps/examples', text : 'Runnable examples and the integration tests'},
+		{path : 'apps/benchmarks', text : 'Benchmarks against express, fastify and raw µWebSockets.js'},
+		{path : 'apps/site', text : 'This site, built from the README and docs/'}
+	];
 </script>
 
 <svelte:head>
 	<title>About : Mousse</title>
-	<meta name="description" content="Mousse is a personal project by Guillaume Vailland, maintained on a volunteer basis. How to contribute, and Hélice, a typesafe PostgreSQL query builder." />
+	<meta name="description" content="Mousse is open source and maintained on a volunteer basis. How to sponsor it, report bugs, suggest features, improve the docs and contribute code." />
 </svelte:head>
 
 <main class="page">
 	<h1>About</h1>
 	<p class="lead">
-		Hello there ! I'm <a href="https://www.linkedin.com/in/guillaume-vailland-136408125/">Guillaume Vailland</a> (Tyren), a humble typescript developer from Nantes, France.
-	</p>
-	<p class="lead">
-		I started Mousse as a personal project, to learn how frameworks like these work under the hood. It draws heavily on its peers, such as
-		Express, Fastify and Koa. I'm very happy to have reached a version mature enough to be published and used in production, and I intend to
-		keep maintaining and improving it on a volunteer basis.
+		Mousse is an open source, MIT licensed project, maintained on a volunteer basis. It draws heavily on its peers, such as Express,
+		Fastify and Koa. Every bug report, idea and pull request helps it grow.
 	</p>
 
-	<h2 class="more">My other work</h2>
-	<section>
-		<div class="title">
-			<span class="propeller" aria-hidden="true">🛩</span>
-			<h3>Hélice</h3>
-		</div>
-		<p>
-			A fluent, typesafe PostgreSQL query builder for TypeScript. You give it your database schema as plain types, with no schema
-			file, no codegen and no decorators, and it has no runtime dependency.
-		</p>
-		<div class="code">
-			<pre>{@html data.helice}</pre>
-		</div>
-		<p class="aside">
-			“Hélice”, pronounced <em>ay-lees</em>, is French for propeller, which looks a bit like a <em>q</em> and a <em>b</em> of
-			query builder stacked on top of each other.
-		</p>
-		<a href="{GITHUB}/helice">Tyrenn/helice</a>
-	</section>
+	<h2 class="more" id="support">Support</h2>
+	<div class="support">
+		<a class="card sponsor" href={SPONSOR}>
+			<span class="heart" aria-hidden="true">♥</span>
+			<strong>Sponsor Mousse</strong>
+			<span class="muted">Sponsoring on GitHub buys time to maintain Mousse, fix bugs and write new modules.</span>
+			<span class="cta">github.com/sponsors/Tyrenn <span class="arrow" aria-hidden="true">→</span></span>
+		</a>
+		<a class="card" href={INDEX}>
+			<span class="heart" aria-hidden="true">✦</span>
+			<strong>More projects</strong>
+			<span class="muted">Mousse is one of several open source tools by Tyren : a query builder, Svelte components, and more.</span>
+			<span class="cta">tyrenn.github.io <span class="arrow" aria-hidden="true">→</span></span>
+		</a>
+	</div>
 
-	<h2 class="more" id="contributing">Contributing</h2>
+	<h2 class="more">Ways to help</h2>
+	<div class="ways">
+		{#each ways as way (way.title)}
+			<section>
+				<h3>{way.title}</h3>
+				<p>{way.text}</p>
+				<a href={way.href}>{way.label}</a>
+			</section>
+		{/each}
+	</div>
+
+	<h2 class="more">Find your way around</h2>
 	<p class="intro">
-		The simplest contribution is to test Mousse and <a href="{GITHUB}/mousse/issues">open issues</a> to help chase the bugs. For code contributions:
+		<a href={REPO}>The repository</a> is a pnpm monorepo driven by turbo :
 	</p>
+	<dl class="layout">
+		{#each layout as entry (entry.path)}
+			<dt><a href="{REPO}/tree/main/{entry.path}"><code>{entry.path}</code></a></dt>
+			<dd>{entry.text}</dd>
+		{/each}
+	</dl>
+	<div class="code"><pre>{@html data.explore}</pre></div>
+
+	<h2 class="more" id="contributing">Contributing code</h2>
 	<ol class="steps">
 		<li>
-			<strong>Fork</strong> <a href="{GITHUB}/mousse">the repository</a> and create a branch from <code>main</code>.
+			<strong>Fork</strong> <a href={REPO}>the repository</a> and create a branch from <code>main</code>.
 			<div class="code"><pre>{@html data.contributing.setup}</pre></div>
 		</li>
 		<li>
 			<strong>Make your change</strong>, with tests : an integration test in
-			<a href="{GITHUB}/mousse/tree/main/apps/examples/tests"><code>apps/examples/tests</code></a> for a new feature, a unit test in
-			<a href="{GITHUB}/mousse/tree/main/packages/mousse/tests"><code>packages/mousse/tests</code></a> for pure logic. Then check everything locally.
+			<a href="{REPO}/tree/main/apps/examples/tests"><code>apps/examples/tests</code></a> for a new feature, a unit test in
+			<a href="{REPO}/tree/main/packages/mousse/tests"><code>packages/mousse/tests</code></a> for pure logic. Then check everything locally.
 			<div class="code"><pre>{@html data.contributing.check}</pre></div>
 		</li>
 		<li>
@@ -82,45 +124,13 @@
 		font-size : 1.1rem;
 	}
 
-	section{
-		padding : 24px;
-		border : 1px solid var(--line);
-		border-radius : 18px;
-		background : var(--surface-raised);
-	}
-
-	.title{
-		display : flex;
-		align-items : center;
-		gap : 12px;
-		margin-bottom : 14px;
-		min-height : 40px;
-	}
-
-	.propeller{
-		font-size : 1.9rem;
-		line-height : 1;
-	}
-
 	h2{
 		font-size : 1.6rem;
 	}
 
 	h3{
-		font-size : 1.4rem;
-	}
-
-	section p{
-		margin : 0 0 14px;
-	}
-
-	section .code{
-		margin-bottom : 14px;
-	}
-
-	.aside{
-		color : var(--text-muted);
-		font-size : 0.9rem;
+		margin : 0 0 8px;
+		font-size : 1.15rem;
 	}
 
 	.more{
@@ -128,7 +138,46 @@
 	}
 
 	.intro{
+		margin : 0 0 16px;
+	}
+
+	.ways{
+		display : grid;
+		grid-template-columns : repeat(auto-fit, minmax(14rem, 1fr));
+		gap : 16px;
+	}
+
+	section{
+		display : flex;
+		flex-direction : column;
+		padding : 20px;
+		border : 1px solid var(--line);
+		border-radius : 18px;
+		background : var(--surface-raised);
+	}
+
+	section p{
+		flex : 1;
+		margin : 0 0 14px;
+		color : var(--text-muted);
+		font-size : 0.95rem;
+	}
+
+	.layout{
+		display : grid;
+		grid-template-columns : auto 1fr;
+		gap : 10px 20px;
 		margin : 0 0 20px;
+	}
+
+	.layout dd{
+		margin : 0;
+		color : var(--text-muted);
+	}
+
+	.layout code{
+		font-size : 0.88em;
+		white-space : nowrap;
 	}
 
 	.steps{
@@ -155,5 +204,90 @@
 
 	.steps :not(pre) > code, .steps a code{
 		font-size : 0.88em;
+	}
+
+	.support{
+		display : grid;
+		grid-template-columns : repeat(auto-fit, minmax(16rem, 1fr));
+		gap : 16px;
+	}
+
+	.card{
+		display : flex;
+		flex-direction : column;
+		gap : 6px;
+		padding : 22px 24px;
+		border : 1px solid var(--line);
+		border-radius : 18px;
+		background : var(--surface-raised);
+		color : inherit;
+		text-decoration : none;
+		transition : border-color 0.15s;
+	}
+
+	.card:hover{
+		border-color : var(--bubble-1);
+	}
+
+	/* The sponsor card leads, in the colors of the header */
+	.card.sponsor{
+		border-color : var(--navy-line);
+		background : var(--navy);
+		color : var(--on-navy);
+	}
+
+	.card.sponsor .muted{
+		color : var(--on-navy-muted);
+	}
+
+	.card.sponsor:hover{
+		border-color : #ea4aaa;
+	}
+
+	.card .heart{
+		color : var(--bubble-1);
+		font-size : 1.5rem;
+		line-height : 1;
+	}
+
+	.card.sponsor .heart{
+		color : #ea4aaa;
+	}
+
+	.card strong{
+		font : 500 1.3rem var(--font-display);
+	}
+
+	.muted{
+		flex : 1;
+		color : var(--text-muted);
+		font-size : 0.95rem;
+	}
+
+	.cta{
+		margin-top : 8px;
+		font-size : 0.9rem;
+		font-weight : 600;
+	}
+
+	.arrow{
+		display : inline-block;
+		transition : transform 0.15s;
+	}
+
+	.card:hover .arrow{
+		transform : translateX(4px);
+	}
+
+	/* The repository layout stacks on a phone */
+	@media (max-width: 560px){
+		.layout{
+			grid-template-columns : 1fr;
+			gap : 2px;
+		}
+
+		.layout dd{
+			margin-bottom : 10px;
+		}
 	}
 </style>

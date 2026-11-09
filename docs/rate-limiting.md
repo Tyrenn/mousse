@@ -5,7 +5,7 @@
 Rate limiting is a [module](modules.md) set per route or per router, like a body parser. It is off until you set one. Mousse provides `DefaultRateLimiter`, whose options, headers and defaults follow [`@fastify/rate-limit`](https://github.com/fastify/fastify-rate-limit), and any other implementation of the [interface](#custom-rate-limiter) fits.
 
 ```ts
-import { Mousse, DefaultRateLimiter } from '@tyren/mousse';
+import { Mousse, DefaultRateLimiter } from '@moussejs/core';
 
 new Mousse()
 	// Every route registered below : 100 requests per minute, per client
@@ -218,7 +218,7 @@ Over the limit, the limiter throws a `RateLimitError`, an [`HTTPError`](routing.
 A route `httpErrorHandler` takes over like for any other error:
 
 ```ts
-import { Router, RateLimitError } from '@tyren/mousse';
+import { Router, RateLimitError } from '@moussejs/core';
 
 const router = new Router({
 	httpErrorHandler: { handle: (e, c) => {
@@ -232,7 +232,7 @@ const router = new Router({
 To only change the status or the message, build the error yourself. `context` holds `statusCode`, `ban`, `max`, `ttl` (milliseconds) and `after` (`'1 minute'`):
 
 ```ts
-import { DefaultRateLimiter, HTTPError } from '@tyren/mousse';
+import { DefaultRateLimiter, HTTPError } from '@moussejs/core';
 
 new DefaultRateLimiter({
 	errorResponseBuilder: (c, { after }) => new HTTPError(429, `Too many attempts, try again in ${after}`)
@@ -255,7 +255,7 @@ Counters are shared by every instance. Works with [ioredis](https://github.com/r
 
 ```ts
 import { Redis } from 'ioredis';
-import { DefaultRateLimiter } from '@tyren/mousse';
+import { DefaultRateLimiter } from '@moussejs/core';
 
 // A request waits for Redis : keep these short so an outage does not hold requests
 const redis = new Redis({ connectTimeout: 500, maxRetriesPerRequest: 1 });
@@ -273,7 +273,7 @@ Limiters on the same store or client need **different `nameSpace`** so their cou
 A store implements one method, sync or async, which must count and report atomically:
 
 ```ts
-import type { RateLimitStore } from '@tyren/mousse';
+import type { RateLimitStore } from '@moussejs/core';
 
 const store: RateLimitStore = {
 	async incr(key, { timeWindow, max, continueExceeding, exponentialBackoff }) {
@@ -288,7 +288,7 @@ const store: RateLimitStore = {
 To use another algorithm (sliding window, token bucket...), implement the interface. Throw or answer through the context to reject the request:
 
 ```ts
-import { HTTPError, type RateLimiter } from '@tyren/mousse';
+import { HTTPError, type RateLimiter } from '@moussejs/core';
 
 const rateLimiter: RateLimiter = {
 	async check(c) {

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { Mousse, Router, testRouter, HTTPError, PayloadTooLargeError, type MousseOptions } from '@tyren/mousse';
+import { Mousse, Router, testRouter, HTTPError, PayloadTooLargeError, type MousseOptions } from '@moussejs/core';
 
 // Some options live on Mousse itself (trustProxy) : testRouter mounts on a default instance
 async function withApp(options : MousseOptions, setup : (app : Mousse) => void, callback : (base : string) => Promise<void>){

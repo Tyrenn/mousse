@@ -1,4 +1,4 @@
-import { Mousse, DefaultRateLimiter } from '@tyren/mousse';
+import { Mousse, DefaultRateLimiter } from '@moussejs/core';
 
 new Mousse({ trustProxy: ['private'] })
 	// Every route below : 100 requests per minute, per client

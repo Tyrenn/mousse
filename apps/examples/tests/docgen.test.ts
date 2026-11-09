@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { Router, Mousse, toOpenAPI } from '@tyren/mousse';
+import { Router, Mousse, toOpenAPI } from '@moussejs/core';
 import { z } from 'zod';
 
 const outputDir = await mkdtemp(join(tmpdir(), 'mousse-docgen-'));
@@ -110,7 +110,7 @@ describe('generateHTMLDoc', () => {
 			`import { registerHooks } from 'node:module';
 			const loaded = [];
 			registerHooks({load : (url, context, next) => { loaded.push(url); return next(url, context); }});
-			await import('@tyren/mousse');
+			await import('@moussejs/core');
 			console.log(loaded.some(url => url.includes('highlight.js')));`
 		], {encoding : 'utf8'});
 		assert.equal(output.trim(), 'false');
